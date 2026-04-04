@@ -119,6 +119,8 @@ const DlIcon=()=>h("svg",{width:14,height:14,viewBox:"0 0 24 24",fill:"none",str
 function fmtAmt(a){return a<0?"-£"+Math.abs(a).toFixed(2):"£"+a.toFixed(2);}
 function fmtDate(d){if(!d||d.length<10)return d;const[,m,day]=d.split("-");const ms=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return parseInt(day)+" "+ms[parseInt(m)];}
 
+const RULES_FILE="spending-rules.json";
+
 // ── App ──
 function App(){
   const[view,setView]=useState("upload");
@@ -127,12 +129,19 @@ function App(){
   const[subs,setSubs]=useState(DEFAULT_SUBS);
   const[loading,setLoading]=useState(false);
   const[error,setError]=useState(null);
+  const[appDirHandle,setAppDirHandle]=useState(null);
   const fileRef=useRef(null),addRef=useRef(null),importRef=useRef(null);
 
   useEffect(()=>{try{const s=localStorage.getItem("st-rules");if(s)setRules(JSON.parse(s));}catch{}},[]);
   useEffect(()=>{try{localStorage.setItem("st-rules",JSON.stringify(rules));}catch{}},[rules]);
   useEffect(()=>{try{const s=localStorage.getItem("st-subs");if(s)setSubs(JSON.parse(s));}catch{}},[]);
   useEffect(()=>{try{localStorage.setItem("st-subs",JSON.stringify(subs));}catch{}},[subs]);
+  // Auto-save rules to folder when connected
+  useEffect(()=>{
+    if(!appDirHandle||!Object.keys(rules).length)return;
+    const data={rules,subcategories:subs};
+    (async()=>{try{const fh=await appDirHandle.getFileHandle(RULES_FILE,{create:true});const w=await fh.createWritable();await w.write(JSON.stringify(data,null,2));await w.close();}catch{}})();
+  },[rules,subs,appDirHandle]);
 
   const addSub=useCallback((name)=>{
     const clean=name.trim().toLowerCase();
@@ -188,8 +197,30 @@ function App(){
     setTxs(prev=>prev.map(tx=>tx.category?{...tx,confirmed:true}:tx));
   },[]);
 
-  const exportRules=()=>{const data={rules,subcategories:subs};const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="spending-rules.json";a.click();URL.revokeObjectURL(u);};
-  const importRulesH=(e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{try{const imp=JSON.parse(ev.target.result);const newRules=imp.rules||imp;const m={...rules,...newRules};setRules(m);if(imp.subcategories){const merged=[...new Set([...subs,...imp.subcategories])];setSubs(merged);}setTxs(prev=>applyPredictions(prev.map(tx=>({...tx,category:null,subcategory:null,confirmed:false})),m));}catch{setError("Invalid rules file.");}};r.readAsText(f);if(importRef.current)importRef.current.value="";};
+  const exportRules=async()=>{
+    const data={rules,subcategories:subs};
+    if(appDirHandle){
+      try{const fh=await appDirHandle.getFileHandle(RULES_FILE,{create:true});const w=await fh.createWritable();await w.write(JSON.stringify(data,null,2));await w.close();return;}catch{}
+    }
+    const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=RULES_FILE;a.click();URL.revokeObjectURL(u);
+  };
+  const importRulesFromData=(imp)=>{
+    const newRules=imp.rules||imp;const m={...rules,...newRules};setRules(m);
+    if(imp.subcategories){const merged=[...new Set([...subs,...imp.subcategories])];setSubs(merged);}
+    setTxs(prev=>applyPredictions(prev.map(tx=>({...tx,category:null,subcategory:null,confirmed:false})),m));
+  };
+  const importRulesH=async(e)=>{
+    // If folder is connected, try reading from it first
+    if(!e&&appDirHandle){
+      try{const fh=await appDirHandle.getFileHandle(RULES_FILE);const file=await fh.getFile();const text=await file.text();importRulesFromData(JSON.parse(text));return;}catch{setError("No "+RULES_FILE+" found in folder.");}return;
+    }
+    const f=e?.target?.files?.[0];if(!f)return;
+    const r=new FileReader();r.onload=(ev)=>{try{importRulesFromData(JSON.parse(ev.target.result));}catch{setError("Invalid rules file.");}};r.readAsText(f);if(importRef.current)importRef.current.value="";
+  };
+  // Auto-load rules from folder when connected
+  const loadRulesFromDir=useCallback(async(dh)=>{
+    try{const fh=await dh.getFileHandle(RULES_FILE);const file=await fh.getFile();const text=await file.text();const imp=JSON.parse(text);const newRules=imp.rules||imp;const m={...rules,...newRules};setRules(m);if(imp.subcategories){const merged=[...new Set([...subs,...imp.subcategories])];setSubs(merged);}}catch{}
+  },[rules,subs]);
   const reset=()=>{setView("upload");setTxs([]);setError(null);};
   const[confirmReset,setConfirmReset]=useState(false);
   const resetAll=()=>{
@@ -263,7 +294,7 @@ function App(){
 
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
-    view==="trends"&&h(Trends,{onBack:()=>setView("upload")})
+    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir})
   );
 }
 
@@ -495,14 +526,14 @@ async function readCsvsFromDir(dirHandle){
   return{txs,names};
 }
 
-function Trends({onBack}){
+function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
-  const[dirHandle,setDirHandle]=useState(null);
-  const[dirName,setDirName]=useState(null);
   const[loading,setLoading]=useState(false);
   const[status,setStatus]=useState(null);
   const fileRef=useRef(null);
+  const dirHandle=appDirHandle;
+  const dirName=appDirHandle?.name;
 
   // Restore from localStorage on mount
   useEffect(()=>{
@@ -516,7 +547,9 @@ function Trends({onBack}){
   const openFolder=useCallback(async()=>{
     try{
       const dh=await window.showDirectoryPicker({mode:"readwrite"});
-      setDirHandle(dh);setDirName(dh.name);setLoading(true);setStatus("Reading folder...");
+      setAppDirHandle(dh);setLoading(true);setStatus("Reading folder...");
+      // Auto-load rules from folder
+      if(onDirConnected)await onDirConnected(dh);
       // Load master first, then CSVs, merge and dedup
       const master=await readMasterFromDir(dh);
       const{txs:csvTxs,names}=await readCsvsFromDir(dh);
@@ -531,20 +564,20 @@ function Trends({onBack}){
       if(e.name!=="AbortError")setStatus("Error: "+e.message);
       setLoading(false);
     }
-  },[]);
+  },[setAppDirHandle,onDirConnected]);
 
   const resync=useCallback(async()=>{
-    if(!dirHandle)return;
+    if(!appDirHandle)return;
     setLoading(true);setStatus("Syncing...");
-    const master=await readMasterFromDir(dirHandle);
-    const{txs:csvTxs,names}=await readCsvsFromDir(dirHandle);
+    const master=await readMasterFromDir(appDirHandle);
+    const{txs:csvTxs,names}=await readCsvsFromDir(appDirHandle);
     const merged=dedup([...master,...csvTxs]);
     setAllTxs(merged);
     setFiles(names);
-    await writeMasterToDir(dirHandle,merged);
+    await writeMasterToDir(appDirHandle,merged);
     setStatus("Synced: "+merged.length+" transactions. Master file updated.");
     setLoading(false);
-  },[dirHandle]);
+  },[appDirHandle]);
 
   // Fallback: manual file picker for browsers without directory API
   const handleFiles=useCallback(async(fileList)=>{
