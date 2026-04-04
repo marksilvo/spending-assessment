@@ -427,19 +427,30 @@ function dedup(txs){
   return out;
 }
 
+function normaliseDate(d){
+  // YYYY-MM-DD → already fine
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d))return d;
+  // DD/MM/YYYY
+  const m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(m)return`${m[3]}-${m[2]}-${m[1]}`;
+  return d;
+}
+
 function parseTrendsCsv(text){
   const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
-  if(lines.length<2)return[];
+  if(lines.length<2)return{txs:[],hasCats:false};
   const hdr=csvLine(lines[0]).map(h=>h.toLowerCase());
   const iDate=hdr.indexOf("date"),iDesc=hdr.indexOf("description"),iAmt=hdr.indexOf("amount"),iCat=hdr.indexOf("category"),iSub=hdr.indexOf("subcategory"),iSrc=hdr.indexOf("source");
-  if(iDate<0||iAmt<0)return[];
+  if(iDate<0||iAmt<0)return{txs:[],hasCats:false};
   const txs=[];
   for(let i=1;i<lines.length;i++){
     const p=csvLine(lines[i]);if(p.length<Math.max(iDate,iAmt)+1)continue;
     const amt=parseFloat(p[iAmt]);if(isNaN(amt))continue;
-    txs.push({date:p[iDate],description:iDesc>=0?p[iDesc]:"",amount:amt,category:iCat>=0?p[iCat]:null,subcategory:iSub>=0?p[iSub]:null,source:iSrc>=0?p[iSrc]:"unknown"});
+    const cat=iCat>=0?p[iCat]||null:null;
+    txs.push({date:normaliseDate(p[iDate]),description:iDesc>=0?p[iDesc]:"",amount:amt,category:cat,subcategory:iSub>=0?p[iSub]||null:null,source:iSrc>=0?p[iSrc]:"unknown"});
   }
-  return txs;
+  const hasCats=txs.some(t=>t.category==="joint"||t.category==="personal");
+  return{txs,hasCats};
 }
 
 function monthKey(d){return d.slice(0,7);}
@@ -519,8 +530,8 @@ async function readCsvsFromDir(dirHandle){
     if(entry.kind==="file"&&entry.name.endsWith(".csv")&&entry.name!==MASTER_FILE){
       const file=await entry.getFile();
       const text=await file.text();
-      const parsed=parseTrendsCsv(text);
-      if(parsed.length){txs.push(...parsed);names.push({name:entry.name,count:parsed.length});}
+      const{txs:parsed,hasCats}=parseTrendsCsv(text);
+      if(parsed.length){txs.push(...parsed);names.push({name:entry.name,count:parsed.length,hasCats});}
     }
   }
   return{txs,names};
@@ -558,7 +569,9 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
       setFiles(names);
       // Auto-save updated master back
       await writeMasterToDir(dh,merged);
-      setStatus("Loaded "+merged.length+" transactions from "+dh.name+" ("+names.length+" CSVs). Master file saved.");
+      const uncatFiles=names.filter(n=>!n.hasCats).map(n=>n.name);
+      const warn=uncatFiles.length?" ⚠ "+uncatFiles.join(", ")+" has no categories — use the exported spending CSV, not the raw bank statement.":"";
+      setStatus("Loaded "+merged.length+" transactions from "+dh.name+" ("+names.length+" CSVs). Master file saved."+warn);
       setLoading(false);
     }catch(e){
       if(e.name!=="AbortError")setStatus("Error: "+e.message);
@@ -575,7 +588,9 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
     setAllTxs(merged);
     setFiles(names);
     await writeMasterToDir(appDirHandle,merged);
-    setStatus("Synced: "+merged.length+" transactions. Master file updated.");
+    const uncatFiles=names.filter(n=>!n.hasCats).map(n=>n.name);
+    const warn=uncatFiles.length?" ⚠ "+uncatFiles.join(", ")+" has no categories — use the exported spending CSV, not the raw bank statement.":"";
+    setStatus("Synced: "+merged.length+" transactions. Master file updated."+warn);
     setLoading(false);
   },[appDirHandle]);
 
@@ -585,13 +600,15 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
     for(const f of fileList){
       if(!f.name.endsWith(".csv"))continue;
       const text=await f.text();
-      const parsed=parseTrendsCsv(text);
+      const{txs:parsed,hasCats}=parseTrendsCsv(text);
       newTxs.push(...parsed);
-      newFiles.push({name:f.name,count:parsed.length});
+      newFiles.push({name:f.name,count:parsed.length,hasCats});
     }
     const deduped=dedup(newTxs);
     setAllTxs(deduped);
     setFiles(newFiles);
+    const uncatFiles=newFiles.filter(n=>!n.hasCats).map(n=>n.name);
+    if(uncatFiles.length)setStatus("⚠ "+uncatFiles.join(", ")+" has no categories — use the exported spending CSV, not the raw bank statement.");
   },[allTxs,files]);
 
   const monthly=React.useMemo(()=>{
