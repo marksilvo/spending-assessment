@@ -620,6 +620,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
 
   // ── Filter state ──
   const allMonths=React.useMemo(()=>[...new Set(allTxs.map(t=>monthKey(t.date)))].sort(),[allTxs]);
+  const allDates=React.useMemo(()=>{const ds=allTxs.map(t=>t.date).filter(Boolean).sort();return{min:ds[0]||"",max:ds[ds.length-1]||""};  },[allTxs]);
   const allSubs=React.useMemo(()=>[...new Set(allTxs.map(t=>t.subcategory).filter(Boolean))].sort(),[allTxs]);
   const allSources=React.useMemo(()=>[...new Set(allTxs.map(t=>t.source).filter(Boolean))].sort(),[allTxs]);
   const[dateFrom,setDateFrom]=useState("");
@@ -630,11 +631,11 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
 
   // Reset date bounds when data first loads
   useEffect(()=>{
-    if(allMonths.length){
-      setDateFrom(prev=>prev||allMonths[0]);
-      setDateTo(prev=>prev||allMonths[allMonths.length-1]);
+    if(allDates.min){
+      setDateFrom(prev=>prev||allDates.min);
+      setDateTo(prev=>prev||allDates.max);
     }
-  },[allMonths]);
+  },[allDates]);
 
   const toggleSub=useCallback((s)=>{
     setSubFilter(prev=>prev.includes(s)?prev.filter(x=>x!==s):[...prev,s]);
@@ -643,8 +644,8 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
   const filteredTxs=React.useMemo(()=>{
     return allTxs.filter(t=>{
       const mk=monthKey(t.date);
-      if(dateFrom&&mk<dateFrom)return false;
-      if(dateTo&&mk>dateTo)return false;
+      if(dateFrom&&t.date<dateFrom)return false;
+      if(dateTo&&t.date>dateTo)return false;
       if(catFilter!=="all"&&t.category!==catFilter)return false;
       if(subFilter.length&&!subFilter.includes(t.subcategory))return false;
       if(sourceFilter.length&&!sourceFilter.includes(t.source))return false;
@@ -674,7 +675,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
   const subBreakP=React.useMemo(()=>grpSub(filteredTxs.filter(t=>t.category==="personal")),[filteredTxs]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
-  const isFiltered=catFilter!=="all"||subFilter.length||sourceFilter.length||(allMonths.length&&(dateFrom!==allMonths[0]||dateTo!==allMonths[allMonths.length-1]));
+  const isFiltered=catFilter!=="all"||subFilter.length||sourceFilter.length||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
 
   const MonthLabel=({m})=>{const[yr,mo]=m.split("-");const ms=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return ms[parseInt(mo)]+" "+yr.slice(2);};
 
@@ -710,18 +711,14 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
         // Row 1: date range
         h("div",{style:{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}},
           h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"From"),
-          h("select",{
-            className:"mono",
+          h("input",{type:"date",className:"mono",
             style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",cursor:"pointer"},
-            value:dateFrom,onChange:e=>setDateFrom(e.target.value)},
-            allMonths.map(m=>h("option",{key:m,value:m},h(MonthLabel,{m})))),
+            min:allDates.min,max:allDates.max,value:dateFrom,onChange:e=>setDateFrom(e.target.value)}),
           h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)"}},"to"),
-          h("select",{
-            className:"mono",
+          h("input",{type:"date",className:"mono",
             style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",cursor:"pointer"},
-            value:dateTo,onChange:e=>setDateTo(e.target.value)},
-            allMonths.map(m=>h("option",{key:m,value:m},h(MonthLabel,{m})))),
-          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allMonths[0]);setDateTo(allMonths[allMonths.length-1]);setCatFilter("all");setSubFilter([]);setSourceFilter([]);}},"Clear filters")
+            min:allDates.min,max:allDates.max,value:dateTo,onChange:e=>setDateTo(e.target.value)}),
+          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allDates.min);setDateTo(allDates.max);setCatFilter("all");setSubFilter([]);setSourceFilter([]);}},"Clear filters")
         ),
         // Row 2: joint/personal
         h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
