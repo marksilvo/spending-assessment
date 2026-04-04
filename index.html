@@ -806,7 +806,31 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
         h(SubBreak,{groups:subBreakJ})),
       catFilter!=="joint"&&h(React.Fragment,null,
         h("h3",{style:{fontSize:14,fontWeight:500,marginTop:20,marginBottom:8,color:"var(--color-text-warning,#854f0b)"}},"Personal by category"),
-        h(SubBreak,{groups:subBreakP}))
+        h(SubBreak,{groups:subBreakP})),
+
+      // Expandable transactions
+      h(TrendsTxList,{txs:filteredTxs})
+    )
+  );
+}
+
+function TrendsTxList({txs}){
+  const[open,setOpen]=useState(false);
+  const sorted=React.useMemo(()=>[...txs].sort((a,b)=>b.date.localeCompare(a.date)),[txs]);
+  return h("div",{style:{marginTop:24}},
+    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
+      h("h3",{style:{fontSize:14,fontWeight:500}},"Transactions"),
+      h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>setOpen(o=>!o)},
+        open?"Hide ▲":"Show "+sorted.length+" ▼")
+    ),
+    open&&h("div",null,
+      sorted.map(tx=>h("div",{key:tx.id||tx.date+tx.description+tx.amount,className:"summary-row"},
+        h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:48,flexShrink:0}},fmtDate(tx.date)),
+        h("span",{style:{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},tx.description),
+        tx.subcategory&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0}},tx.subcategory),
+        tx.category&&h("span",{style:{fontSize:10,fontWeight:500,padding:"1px 6px",borderRadius:4,flexShrink:0,background:tx.category==="joint"?"var(--color-background-info,#e6f1fb)":"var(--color-background-warning,#faeeda)",color:tx.category==="joint"?"var(--color-text-info,#185fa5)":"var(--color-text-warning,#854f0b)"}},tx.category==="joint"?"J":"P"),
+        h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:tx.amount<0?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount))
+      ))
     )
   );
 }
