@@ -621,10 +621,12 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
   // ── Filter state ──
   const allMonths=React.useMemo(()=>[...new Set(allTxs.map(t=>monthKey(t.date)))].sort(),[allTxs]);
   const allSubs=React.useMemo(()=>[...new Set(allTxs.map(t=>t.subcategory).filter(Boolean))].sort(),[allTxs]);
+  const allSources=React.useMemo(()=>[...new Set(allTxs.map(t=>t.source).filter(Boolean))].sort(),[allTxs]);
   const[dateFrom,setDateFrom]=useState("");
   const[dateTo,setDateTo]=useState("");
   const[catFilter,setCatFilter]=useState("all"); // "all"|"joint"|"personal"
   const[subFilter,setSubFilter]=useState([]); // [] = all
+  const[sourceFilter,setSourceFilter]=useState([]); // [] = all
 
   // Reset date bounds when data first loads
   useEffect(()=>{
@@ -645,9 +647,10 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
       if(dateTo&&mk>dateTo)return false;
       if(catFilter!=="all"&&t.category!==catFilter)return false;
       if(subFilter.length&&!subFilter.includes(t.subcategory))return false;
+      if(sourceFilter.length&&!sourceFilter.includes(t.source))return false;
       return true;
     });
-  },[allTxs,dateFrom,dateTo,catFilter,subFilter]);
+  },[allTxs,dateFrom,dateTo,catFilter,subFilter,sourceFilter]);
 
   const monthly=React.useMemo(()=>{
     const m={};
@@ -671,7 +674,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
   const subBreakP=React.useMemo(()=>grpSub(filteredTxs.filter(t=>t.category==="personal")),[filteredTxs]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
-  const isFiltered=catFilter!=="all"||subFilter.length||(allMonths.length&&(dateFrom!==allMonths[0]||dateTo!==allMonths[allMonths.length-1]));
+  const isFiltered=catFilter!=="all"||subFilter.length||sourceFilter.length||(allMonths.length&&(dateFrom!==allMonths[0]||dateTo!==allMonths[allMonths.length-1]));
 
   const MonthLabel=({m})=>{const[yr,mo]=m.split("-");const ms=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return ms[parseInt(mo)]+" "+yr.slice(2);};
 
@@ -718,7 +721,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
             style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",cursor:"pointer"},
             value:dateTo,onChange:e=>setDateTo(e.target.value)},
             allMonths.map(m=>h("option",{key:m,value:m},h(MonthLabel,{m})))),
-          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allMonths[0]);setDateTo(allMonths[allMonths.length-1]);setCatFilter("all");setSubFilter([]);}},"Clear filters")
+          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allMonths[0]);setDateTo(allMonths[allMonths.length-1]);setCatFilter("all");setSubFilter([]);setSourceFilter([]);}},"Clear filters")
         ),
         // Row 2: joint/personal
         h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
@@ -728,7 +731,16 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
             style:{fontSize:11,padding:"3px 10px",textTransform:"capitalize"},
             onClick:()=>setCatFilter(c)},c))
         ),
-        // Row 3: subcategories
+        // Row 3: source
+        allSources.length>1&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
+          h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Card"),
+          allSources.map(s=>h("button",{key:s,
+            className:"sub-btn"+(sourceFilter.includes(s)?" active":""),
+            style:{textTransform:"capitalize"},
+            onClick:()=>setSourceFilter(prev=>prev.includes(s)?prev.filter(x=>x!==s):[...prev,s])},
+            s==="santander"?"Santander":"Amex"))
+        ),
+        // Row 4: subcategories
         allSubs.length>0&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
           h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Cat"),
           allSubs.map(s=>h("button",{key:s,
