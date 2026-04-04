@@ -390,7 +390,8 @@ function Summary({txs,onBack,onReset}){
       h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Total spend"),h("div",{className:"mono",style:{fontSize:20,fontWeight:600}},fmtAmt(total))),
       h("div",{style:{textAlign:"right",display:"flex",flexDirection:"column",gap:6}},
         h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Sources"),h("div",{style:{display:"flex",gap:4,marginTop:4,justifyContent:"flex-end"}},sources.map(s=>h("span",{key:s,className:s==="santander"?"badge-san":"badge-amex"},s==="santander"?"Santander":"Amex")))),
-        dateRange&&h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Period"),h("div",{className:"mono",style:{fontSize:12,fontWeight:500,marginTop:2}},dateRange))))
+        dateRange&&h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Period"),h("div",{className:"mono",style:{fontSize:12,fontWeight:500,marginTop:2}},dateRange)))
+
     ),
 
     total>0&&h("div",{style:{marginBottom:24}},
