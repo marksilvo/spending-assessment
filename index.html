@@ -364,7 +364,13 @@ function Summary({txs,onBack,onReset}){
   const exportCsv=()=>{
     const hdr="Date,Description,Amount,Category,Subcategory,Source\n";
     const rows=txs.map(t=>`${t.date},"${t.description.replace(/"/g,'""')}",${t.amount.toFixed(2)},${t.category},${t.subcategory||""},${t.source}`).join("\n");
-    const b=new Blob([hdr+rows],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`spending-${new Date().toISOString().slice(0,7)}.csv`;a.click();URL.revokeObjectURL(u);
+    const sorted=[...txs].sort((a,b)=>a.date.localeCompare(b.date));
+    const dateMin=sorted[0]?.date?.slice(0,7)||"";
+    const dateMax=sorted[sorted.length-1]?.date?.slice(0,7)||"";
+    const srcLabel=sources.map(s=>s==="santander"?"santander":"amex").join("-");
+    const rangePart=dateMin===dateMax?dateMin:`${dateMin}_${dateMax}`;
+    const filename=`spending-${srcLabel}-${rangePart}.csv`;
+    const b=new Blob([hdr+rows],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=filename;a.click();URL.revokeObjectURL(u);
   };
 
   return h("div",null,
@@ -611,30 +617,62 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
     if(uncatFiles.length)setStatus("⚠ "+uncatFiles.join(", ")+" has no categories — use the exported spending CSV, not the raw bank statement.");
   },[allTxs,files]);
 
+  // ── Filter state ──
+  const allMonths=React.useMemo(()=>[...new Set(allTxs.map(t=>monthKey(t.date)))].sort(),[allTxs]);
+  const allSubs=React.useMemo(()=>[...new Set(allTxs.map(t=>t.subcategory).filter(Boolean))].sort(),[allTxs]);
+  const[dateFrom,setDateFrom]=useState("");
+  const[dateTo,setDateTo]=useState("");
+  const[catFilter,setCatFilter]=useState("all"); // "all"|"joint"|"personal"
+  const[subFilter,setSubFilter]=useState([]); // [] = all
+
+  // Reset date bounds when data first loads
+  useEffect(()=>{
+    if(allMonths.length){
+      setDateFrom(prev=>prev||allMonths[0]);
+      setDateTo(prev=>prev||allMonths[allMonths.length-1]);
+    }
+  },[allMonths]);
+
+  const toggleSub=useCallback((s)=>{
+    setSubFilter(prev=>prev.includes(s)?prev.filter(x=>x!==s):[...prev,s]);
+  },[]);
+
+  const filteredTxs=React.useMemo(()=>{
+    return allTxs.filter(t=>{
+      const mk=monthKey(t.date);
+      if(dateFrom&&mk<dateFrom)return false;
+      if(dateTo&&mk>dateTo)return false;
+      if(catFilter!=="all"&&t.category!==catFilter)return false;
+      if(subFilter.length&&!subFilter.includes(t.subcategory))return false;
+      return true;
+    });
+  },[allTxs,dateFrom,dateTo,catFilter,subFilter]);
+
   const monthly=React.useMemo(()=>{
     const m={};
-    allTxs.forEach(t=>{
+    filteredTxs.forEach(t=>{
       const k=monthKey(t.date);
       if(!m[k])m[k]={month:k,joint:0,personal:0,total:0,count:0};
-      const amt=t.amount;
-      if(t.category==="joint")m[k].joint+=amt;
-      else if(t.category==="personal")m[k].personal+=amt;
-      m[k].total+=amt;m[k].count++;
+      if(t.category==="joint")m[k].joint+=t.amount;
+      else if(t.category==="personal")m[k].personal+=t.amount;
+      m[k].total+=t.amount;m[k].count++;
     });
     return Object.values(m).sort((a,b)=>a.month.localeCompare(b.month));
-  },[allTxs]);
+  },[filteredTxs]);
 
   const totals=React.useMemo(()=>{
-    const j=allTxs.filter(t=>t.category==="joint").reduce((s,t)=>s+t.amount,0);
-    const p=allTxs.filter(t=>t.category==="personal").reduce((s,t)=>s+t.amount,0);
+    const j=filteredTxs.filter(t=>t.category==="joint").reduce((s,t)=>s+t.amount,0);
+    const p=filteredTxs.filter(t=>t.category==="personal").reduce((s,t)=>s+t.amount,0);
     return{joint:j,personal:p,total:j+p};
-  },[allTxs]);
+  },[filteredTxs]);
 
-  // Subcategory breakdown across all time
-  const subBreakJ=React.useMemo(()=>grpSub(allTxs.filter(t=>t.category==="joint")),[allTxs]);
-  const subBreakP=React.useMemo(()=>grpSub(allTxs.filter(t=>t.category==="personal")),[allTxs]);
+  const subBreakJ=React.useMemo(()=>grpSub(filteredTxs.filter(t=>t.category==="joint")),[filteredTxs]);
+  const subBreakP=React.useMemo(()=>grpSub(filteredTxs.filter(t=>t.category==="personal")),[filteredTxs]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
+  const isFiltered=catFilter!=="all"||subFilter.length||(allMonths.length&&(dateFrom!==allMonths[0]||dateTo!==allMonths[allMonths.length-1]));
+
+  const MonthLabel=({m})=>{const[yr,mo]=m.split("-");const ms=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return ms[parseInt(mo)]+" "+yr.slice(2);};
 
   return h("div",null,
     h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}},
@@ -662,9 +700,45 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
     ),
 
     allTxs.length>0&&h(React.Fragment,null,
+
+      // ── Filters ──
+      h("div",{className:"card",style:{marginBottom:20,display:"flex",flexDirection:"column",gap:12}},
+        // Row 1: date range
+        h("div",{style:{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}},
+          h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"From"),
+          h("select",{
+            className:"mono",
+            style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",cursor:"pointer"},
+            value:dateFrom,onChange:e=>setDateFrom(e.target.value)},
+            allMonths.map(m=>h("option",{key:m,value:m},h(MonthLabel,{m})))),
+          h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)"}},"to"),
+          h("select",{
+            className:"mono",
+            style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",cursor:"pointer"},
+            value:dateTo,onChange:e=>setDateTo(e.target.value)},
+            allMonths.map(m=>h("option",{key:m,value:m},h(MonthLabel,{m})))),
+          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allMonths[0]);setDateTo(allMonths[allMonths.length-1]);setCatFilter("all");setSubFilter([]);}},"Clear filters")
+        ),
+        // Row 2: joint/personal
+        h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
+          h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Show"),
+          ["all","joint","personal"].map(c=>h("button",{key:c,
+            className:"pill"+(catFilter===c?" pill-primary":""),
+            style:{fontSize:11,padding:"3px 10px",textTransform:"capitalize"},
+            onClick:()=>setCatFilter(c)},c))
+        ),
+        // Row 3: subcategories
+        allSubs.length>0&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
+          h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Cat"),
+          allSubs.map(s=>h("button",{key:s,
+            className:"sub-btn"+(subFilter.includes(s)?" active":""),
+            onClick:()=>toggleSub(s)},s))
+        )
+      ),
+
       // Stats
       h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",fontSize:12,color:"var(--color-text-secondary,#666)"}},
-        h("span",{className:"mono"},allTxs.length+" transactions"),
+        h("span",{className:"mono"},filteredTxs.length+(isFiltered?" of "+allTxs.length:"")+" transactions"),
         h("span",{className:"mono"},monthly.length+" months"),
         files.length>0&&h("span",{className:"mono"},files.length+" files loaded")
       ),
@@ -712,11 +786,13 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
         })
       ),
 
-      // Sub breakdowns
-      h("h3",{style:{fontSize:14,fontWeight:500,marginBottom:8,color:"var(--color-text-info,#185fa5)"}},"Joint by category"),
-      h(SubBreak,{groups:subBreakJ}),
-      h("h3",{style:{fontSize:14,fontWeight:500,marginTop:20,marginBottom:8,color:"var(--color-text-warning,#854f0b)"}},"Personal by category"),
-      h(SubBreak,{groups:subBreakP})
+      // Sub breakdowns — hide if subcategory filter is active (redundant)
+      catFilter!=="personal"&&h(React.Fragment,null,
+        h("h3",{style:{fontSize:14,fontWeight:500,marginBottom:8,color:"var(--color-text-info,#185fa5)"}},"Joint by category"),
+        h(SubBreak,{groups:subBreakJ})),
+      catFilter!=="joint"&&h(React.Fragment,null,
+        h("h3",{style:{fontSize:14,fontWeight:500,marginTop:20,marginBottom:8,color:"var(--color-text-warning,#854f0b)"}},"Personal by category"),
+        h(SubBreak,{groups:subBreakP}))
     )
   );
 }
