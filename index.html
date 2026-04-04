@@ -460,12 +460,93 @@ function Chart({data,width,height}){
   return h("canvas",{ref:canvasRef,style:{width,height,display:"block",margin:"0 auto"}});
 }
 
+const MASTER_FILE="spending-master.json";
+const LS_KEY="st-trends";
+
+function saveTrendsLS(txs){try{localStorage.setItem(LS_KEY,JSON.stringify(txs));}catch{}}
+function loadTrendsLS(){try{const s=localStorage.getItem(LS_KEY);return s?JSON.parse(s):[];}catch{return[];}}
+
+async function writeMasterToDir(dirHandle,txs){
+  const fh=await dirHandle.getFileHandle(MASTER_FILE,{create:true});
+  const w=await fh.createWritable();
+  await w.write(JSON.stringify(txs,null,2));
+  await w.close();
+}
+
+async function readMasterFromDir(dirHandle){
+  try{
+    const fh=await dirHandle.getFileHandle(MASTER_FILE);
+    const file=await fh.getFile();
+    const text=await file.text();
+    return JSON.parse(text);
+  }catch{return[];}
+}
+
+async function readCsvsFromDir(dirHandle){
+  const txs=[];const names=[];
+  for await(const entry of dirHandle.values()){
+    if(entry.kind==="file"&&entry.name.endsWith(".csv")&&entry.name!==MASTER_FILE){
+      const file=await entry.getFile();
+      const text=await file.text();
+      const parsed=parseTrendsCsv(text);
+      if(parsed.length){txs.push(...parsed);names.push({name:entry.name,count:parsed.length});}
+    }
+  }
+  return{txs,names};
+}
+
 function Trends({onBack}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
+  const[dirHandle,setDirHandle]=useState(null);
+  const[dirName,setDirName]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const[status,setStatus]=useState(null);
   const fileRef=useRef(null);
-  const[groupBy,setGroupBy]=useState("month");
 
+  // Restore from localStorage on mount
+  useEffect(()=>{
+    const cached=loadTrendsLS();
+    if(cached.length){setAllTxs(cached);setStatus("Restored "+cached.length+" transactions from cache");}
+  },[]);
+
+  // Save to localStorage whenever data changes
+  useEffect(()=>{if(allTxs.length)saveTrendsLS(allTxs);},[allTxs]);
+
+  const openFolder=useCallback(async()=>{
+    try{
+      const dh=await window.showDirectoryPicker({mode:"readwrite"});
+      setDirHandle(dh);setDirName(dh.name);setLoading(true);setStatus("Reading folder...");
+      // Load master first, then CSVs, merge and dedup
+      const master=await readMasterFromDir(dh);
+      const{txs:csvTxs,names}=await readCsvsFromDir(dh);
+      const merged=dedup([...master,...csvTxs]);
+      setAllTxs(merged);
+      setFiles(names);
+      // Auto-save updated master back
+      await writeMasterToDir(dh,merged);
+      setStatus("Loaded "+merged.length+" transactions from "+dh.name+" ("+names.length+" CSVs). Master file saved.");
+      setLoading(false);
+    }catch(e){
+      if(e.name!=="AbortError")setStatus("Error: "+e.message);
+      setLoading(false);
+    }
+  },[]);
+
+  const resync=useCallback(async()=>{
+    if(!dirHandle)return;
+    setLoading(true);setStatus("Syncing...");
+    const master=await readMasterFromDir(dirHandle);
+    const{txs:csvTxs,names}=await readCsvsFromDir(dirHandle);
+    const merged=dedup([...master,...csvTxs]);
+    setAllTxs(merged);
+    setFiles(names);
+    await writeMasterToDir(dirHandle,merged);
+    setStatus("Synced: "+merged.length+" transactions. Master file updated.");
+    setLoading(false);
+  },[dirHandle]);
+
+  // Fallback: manual file picker for browsers without directory API
   const handleFiles=useCallback(async(fileList)=>{
     const newTxs=[...allTxs];const newFiles=[...files];
     for(const f of fileList){
@@ -503,24 +584,31 @@ function Trends({onBack}){
   const subBreakJ=React.useMemo(()=>grpSub(allTxs.filter(t=>t.category==="joint")),[allTxs]);
   const subBreakP=React.useMemo(()=>grpSub(allTxs.filter(t=>t.category==="personal")),[allTxs]);
 
+  const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
+
   return h("div",null,
     h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}},
       h("button",{className:"pill",onClick:onBack},"← Back"),
-      h("div",{style:{display:"flex",gap:8}},
-        h("label",{className:"pill pill-primary",style:{cursor:"pointer"}},
+      h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+        hasDirectoryAPI&&h("button",{className:"pill"+(dirHandle?" pill-confirm":""),onClick:openFolder,disabled:loading},
+          dirHandle?"📂 "+dirName:"Open folder"),
+        dirHandle&&h("button",{className:"pill",onClick:resync,disabled:loading},loading?"Syncing...":"↻ Sync"),
+        h("label",{className:"pill",style:{cursor:"pointer"}},
           "+ Add CSVs",
           h("input",{ref:fileRef,type:"file",accept:".csv",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}}))
       )
     ),
 
-    allTxs.length===0&&h("div",{className:"drop-zone",
-      onClick:()=>fileRef.current?.click(),
+    status&&h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-secondary,#666)",marginBottom:12}},status),
+
+    allTxs.length===0&&!loading&&h("div",{className:"drop-zone",
+      onClick:()=>hasDirectoryAPI?openFolder():fileRef.current?.click(),
       onDragOver:e=>{e.preventDefault();e.currentTarget.classList.add("over");},
       onDragLeave:e=>{e.currentTarget.classList.remove("over");},
       onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove("over");handleFiles(Array.from(e.dataTransfer.files));}},
       h("div",{style:{color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},h(UploadIcon)),
-      h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},"Drop exported CSV files"),
-      h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},"Load multiple months to see trends. Uses the CSV export format from this tool.")
+      h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},hasDirectoryAPI?"Choose your spending folder":"Drop exported CSV files"),
+      h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},hasDirectoryAPI?"Pick the folder with your exported CSVs. A master file will be saved there automatically.":"Load multiple months to see trends. Uses the CSV export format from this tool.")
     ),
 
     allTxs.length>0&&h(React.Fragment,null,
