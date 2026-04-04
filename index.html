@@ -365,8 +365,9 @@ function Summary({txs,onBack,onReset}){
     const hdr="Date,Description,Amount,Category,Subcategory,Source\n";
     const rows=txs.map(t=>`${t.date},"${t.description.replace(/"/g,'""')}",${t.amount.toFixed(2)},${t.category},${t.subcategory||""},${t.source}`).join("\n");
     const sorted=[...txs].sort((a,b)=>a.date.localeCompare(b.date));
-    const dateMin=sorted[0]?.date?.slice(0,7)||"";
-    const dateMax=sorted[sorted.length-1]?.date?.slice(0,7)||"";
+    const fmtFileDate=d=>{if(!d||d.length<10)return d;const[yr,mo,dy]=d.slice(0,10).split("-");return`${dy}-${mo}-${yr}`;};
+    const dateMin=fmtFileDate(sorted[0]?.date)||"";
+    const dateMax=fmtFileDate(sorted[sorted.length-1]?.date)||"";
     const srcLabel=sources.map(s=>s==="santander"?"santander":"amex").join("-");
     const rangePart=dateMin===dateMax?dateMin:`${dateMin}_${dateMax}`;
     const filename=`spending-${srcLabel}-${rangePart}.csv`;
