@@ -802,6 +802,20 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const subBreakJ=React.useMemo(()=>grpSub(filteredTxs.filter(t=>t.category==="joint")),[filteredTxs]);
   const subBreakP=React.useMemo(()=>grpSub(filteredTxs.filter(t=>t.category==="personal")),[filteredTxs]);
 
+  const setTrendsCat=useCallback((txKey,category)=>{
+    setAllTxs(prev=>prev.map(tx=>{
+      const key=tx.id||tx.date+tx.description+tx.amount;
+      return key===txKey?{...tx,category}:tx;
+    }));
+  },[]);
+
+  const setTrendsSub=useCallback((txKey,subcategory)=>{
+    setAllTxs(prev=>prev.map(tx=>{
+      const key=tx.id||tx.date+tx.description+tx.amount;
+      return key===txKey?{...tx,subcategory}:tx;
+    }));
+  },[]);
+
   const setTrendsPriority=useCallback((txKey,priority)=>{
     setAllTxs(prev=>prev.map(tx=>{
       const key=tx.id||tx.date+tx.description+tx.amount;
@@ -995,12 +1009,12 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
         h(SubBreak,{groups:subBreakP})),
 
       // Expandable transactions
-      h(TrendsTxList,{txs:filteredTxs,onRecurring:setTrendsRecurring,onNotes:setTrendsNotes,onPriority:setTrendsPriority})
+      h(TrendsTxList,{txs:filteredTxs,onRecurring:setTrendsRecurring,onNotes:setTrendsNotes,onPriority:setTrendsPriority,onCat:setTrendsCat,onSub:setTrendsSub,subs:allSubs})
     )
   );
 }
 
-function TrendsTxList({txs,onRecurring,onNotes,onPriority}){
+function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs}){
   const[open,setOpen]=useState(false);
   const[editingId,setEditingId]=useState(null);
   const[editFreq,setEditFreq]=useState(null);
@@ -1008,6 +1022,7 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority}){
   const[editingNotesId,setEditingNotesId]=useState(null);
   const[draftNote,setDraftNote]=useState("");
   const[priorityEditId,setPriorityEditId]=useState(null);
+  const[subPickerId,setSubPickerId]=useState(null);
   const sorted=React.useMemo(()=>[...txs].sort((a,b)=>b.date.localeCompare(a.date)),[txs]);
 
   const startEdit=(tx)=>{
@@ -1036,8 +1051,9 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority}){
             tx.priority&&h(PriorityBadge,{priority:tx.priority}),
             tx.notes&&editingNotesId!==txKey&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0,fontStyle:"italic",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},title:tx.notes},"✎ "+tx.notes),
             tx.subcategory&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0}},tx.subcategory),
-            tx.category&&h("span",{style:{fontSize:10,fontWeight:500,padding:"1px 6px",borderRadius:4,flexShrink:0,background:tx.category==="joint"?"var(--color-background-info,#e6f1fb)":"var(--color-background-warning,#faeeda)",color:tx.category==="joint"?"var(--color-text-info,#185fa5)":"var(--color-text-warning,#854f0b)"}},tx.category==="joint"?"J":"P"),
             h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:tx.amount<0?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount)),
+            onCat&&h("button",{className:"cat-btn"+(tx.category==="joint"?" active-j":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>{onCat(txKey,"joint");setSubPickerId(txKey);}},tx.category==="joint"&&h(CheckIcon)," J"),
+            onCat&&h("button",{className:"cat-btn"+(tx.category==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>{onCat(txKey,"personal");setSubPickerId(txKey);}},tx.category==="personal"&&h(CheckIcon)," P"),
             onRecurring&&h("button",{className:"recurring-toggle"+(tx.recurring?" active":""),style:{marginLeft:4,padding:"2px 6px",fontSize:11},onClick:()=>{
               if(tx.recurring){onRecurring(txKey,false,null,null);setEditingId(null);}
               else startEdit(tx);
@@ -1047,6 +1063,9 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority}){
               if(editingNotesId===txKey){setEditingNotesId(null);}
               else{setEditingNotesId(txKey);setDraftNote(tx.notes||"");}
             },title:"Add note"},"✎")
+          ),
+          subPickerId===txKey&&onSub&&h("div",{className:"sub-picker",style:{paddingLeft:0,paddingTop:4}},
+            subs&&subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(txKey,s);setSubPickerId(null);}},s))
           ),
           priorityEditId===txKey&&onPriority&&h("div",{className:"priority-picker",style:{paddingLeft:0,paddingTop:4}},
             PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(tx.priority===p?" active-"+p:""),onClick:()=>{onPriority(txKey,tx.priority===p?null:p);setPriorityEditId(null);}},priorityLabel(p)))
