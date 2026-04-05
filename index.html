@@ -747,6 +747,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const[catFilter,setCatFilter]=useState("all"); // "all"|"joint"|"personal"
   const[subFilter,setSubFilter]=useState([]); // [] = all
   const[sourceFilter,setSourceFilter]=useState([]); // [] = all
+  const[searchQuery,setSearchQuery]=useState("");
   const[recurringFilter,setRecurringFilter]=useState("all");
   const allRecurringFreqs=React.useMemo(()=>[...new Set(allTxs.filter(t=>t.recurring&&t.recurringFrequency).map(t=>t.recurringFrequency))].sort(),[allTxs]);
   const hasAnyRecurring=React.useMemo(()=>allTxs.some(t=>t.recurring),[allTxs]);
@@ -772,6 +773,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       if(catFilter!=="all"&&t.category!==catFilter)return false;
       if(subFilter.length&&!subFilter.includes(t.subcategory))return false;
       if(sourceFilter.length&&!sourceFilter.includes(t.source))return false;
+      if(searchQuery&&!t.description.toLowerCase().includes(searchQuery.toLowerCase()))return false;
       if(recurringFilter==="recurring"&&!t.recurring)return false;
       if(recurringFilter==="one-off"&&t.recurring)return false;
       if(recurringFilter!=="all"&&recurringFilter!=="recurring"&&recurringFilter!=="one-off"&&t.recurringFrequency!==recurringFilter)return false;
@@ -779,7 +781,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       if(priorityFilter!=="all"&&priorityFilter!=="unassigned"&&t.priority!==priorityFilter)return false;
       return true;
     });
-  },[allTxs,dateFrom,dateTo,catFilter,subFilter,sourceFilter,recurringFilter,priorityFilter]);
+  },[allTxs,dateFrom,dateTo,catFilter,subFilter,sourceFilter,recurringFilter,priorityFilter,searchQuery]);
 
   const monthly=React.useMemo(()=>{
     const m={};
@@ -862,7 +864,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   },[]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
-  const isFiltered=catFilter!=="all"||subFilter.length||sourceFilter.length||recurringFilter!=="all"||priorityFilter!=="all"||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
+  const isFiltered=searchQuery||catFilter!=="all"||subFilter.length||sourceFilter.length||recurringFilter!=="all"||priorityFilter!=="all"||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
 
   const MonthLabel=({m})=>{const[yr,mo]=m.split("-");const ms=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return ms[parseInt(mo)]+" "+yr.slice(2);};
 
@@ -905,7 +907,12 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
           h("input",{type:"date",className:"mono",
             style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",cursor:"pointer"},
             min:allDates.min,max:allDates.max,value:dateTo,onChange:e=>setDateTo(e.target.value)}),
-          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allDates.min);setDateTo(allDates.max);setCatFilter("all");setSubFilter([]);setSourceFilter([]);setRecurringFilter("all");setPriorityFilter("all");}},"Clear filters")
+          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allDates.min);setDateTo(allDates.max);setCatFilter("all");setSubFilter([]);setSourceFilter([]);setRecurringFilter("all");setPriorityFilter("all");setSearchQuery("");}},"Clear filters")
+        ),
+        // Row 0: search
+        h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+          h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Search"),
+          h("input",{type:"text",value:searchQuery,onChange:e=>setSearchQuery(e.target.value),placeholder:"Filter by description…",style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",fontFamily:"'DM Mono',monospace",width:220},onKeyDown:e=>{if(e.key==="Escape")setSearchQuery("");}})
         ),
         // Row 2: joint/personal
         h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
