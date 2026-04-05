@@ -774,7 +774,8 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       if(recurringFilter==="recurring"&&!t.recurring)return false;
       if(recurringFilter==="one-off"&&t.recurring)return false;
       if(recurringFilter!=="all"&&recurringFilter!=="recurring"&&recurringFilter!=="one-off"&&t.recurringFrequency!==recurringFilter)return false;
-      if(priorityFilter!=="all"&&t.priority!==priorityFilter)return false;
+      if(priorityFilter==="unassigned"&&t.priority)return false;
+      if(priorityFilter!=="all"&&priorityFilter!=="unassigned"&&t.priority!==priorityFilter)return false;
       return true;
     });
   },[allTxs,dateFrom,dateTo,catFilter,subFilter,sourceFilter,recurringFilter,priorityFilter]);
@@ -919,7 +920,8 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
         hasAnyPriority&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
           h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Pri"),
           h("button",{className:"sub-btn"+(priorityFilter==="all"?" active":""),onClick:()=>setPriorityFilter("all")},"all"),
-          PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(priorityFilter===p?" active-"+p:""),onClick:()=>setPriorityFilter(priorityFilter===p?"all":p)},priorityLabel(p)))
+          PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(priorityFilter===p?" active-"+p:""),onClick:()=>setPriorityFilter(priorityFilter===p?"all":p)},priorityLabel(p))),
+          h("button",{className:"sub-btn"+(priorityFilter==="unassigned"?" active":""),onClick:()=>setPriorityFilter(priorityFilter==="unassigned"?"all":"unassigned")},"unassigned")
         ),
         // Row 6: recurring
         hasAnyRecurring&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
