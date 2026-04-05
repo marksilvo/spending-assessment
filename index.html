@@ -512,13 +512,19 @@ function SubBreak({groups}){
 function grpSub(txs){const m={};txs.forEach(t=>{const k=t.subcategory||"(none)";if(!m[k])m[k]={name:k,total:0,count:0};m[k].total+=t.amount;m[k].count++;});return Object.values(m).sort((a,b)=>b.total-a.total);}
 
 // ── Trends ──
+const ENRICH_FIELDS=["category","subcategory","recurring","recurringFrequency","recurringCustom","notes","priority"];
 function dedup(txs){
-  const seen=new Set(),out=[];
+  const seen=new Map();
   for(const t of txs){
     const key=`${t.date}|${t.description}|${t.amount}|${t.source}`;
-    if(!seen.has(key)){seen.add(key);out.push(t);}
+    if(!seen.has(key)){seen.set(key,{...t});}
+    else{
+      // Merge: fill in any enrichment fields the existing record is missing
+      const ex=seen.get(key);
+      ENRICH_FIELDS.forEach(f=>{if((ex[f]==null||ex[f]===false)&&t[f]!=null&&t[f]!==false)ex[f]=t[f];});
+    }
   }
-  return out;
+  return [...seen.values()];
 }
 
 function normaliseDate(d){
@@ -690,7 +696,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       // Load master first, then CSVs, merge and dedup
       const master=await readMasterFromDir(dh);
       const{txs:csvTxs,names}=await readCsvsFromDir(dh);
-      const merged=dedup([...master,...csvTxs]);
+      const merged=dedup([...allTxs,...master,...csvTxs]);
       setAllTxs(merged);
       setFiles(names);
       // Auto-save updated master back
@@ -703,14 +709,14 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       if(e.name!=="AbortError")setStatus("Error: "+e.message);
       setLoading(false);
     }
-  },[setAppDirHandle,onDirConnected]);
+  },[setAppDirHandle,onDirConnected,allTxs]);
 
   const resync=useCallback(async()=>{
     if(!appDirHandle)return;
     setLoading(true);setStatus("Syncing...");
     const master=await readMasterFromDir(appDirHandle);
     const{txs:csvTxs,names}=await readCsvsFromDir(appDirHandle);
-    const merged=dedup([...master,...csvTxs]);
+    const merged=dedup([...allTxs,...master,...csvTxs]);
     setAllTxs(merged);
     setFiles(names);
     await writeMasterToDir(appDirHandle,merged);
@@ -718,7 +724,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     const warn=uncatFiles.length?" ⚠ "+uncatFiles.join(", ")+" has no categories — use the exported spending CSV, not the raw bank statement.":"";
     setStatus("Synced: "+merged.length+" transactions. Master file updated."+warn);
     setLoading(false);
-  },[appDirHandle]);
+  },[appDirHandle,allTxs]);
 
   // Fallback: manual file picker for browsers without directory API
   const handleFiles=useCallback(async(fileList)=>{
