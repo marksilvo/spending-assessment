@@ -169,18 +169,25 @@ function App(){
     (async()=>{try{const fh=await appDirHandle.getFileHandle(RULES_FILE,{create:true});const w=await fh.createWritable();await w.write(JSON.stringify(data,null,2));await w.close();}catch{}})();
   },[rules,subs,sub2Config,appDirHandle]);
 
-  // Dominant priority per subcategory derived from rules — used to auto-assign on sub selection
+  // Dominant priority per subcategory (and sub2 combo) derived from rules
+  // Keys: "groceries" for primary, "car|fuel" for sub2-specific
   const subPriorityDefaults=React.useMemo(()=>{
     const m={};
     Object.values(rules).forEach(r=>{
       if(r.subcategory&&r.priority){
-        if(!m[r.subcategory])m[r.subcategory]={};
-        m[r.subcategory][r.priority]=(m[r.subcategory][r.priority]||0)+1;
+        const k1=r.subcategory;
+        if(!m[k1])m[k1]={};
+        m[k1][r.priority]=(m[k1][r.priority]||0)+1;
+        if(r.subcategory2){
+          const k2=r.subcategory+"|"+r.subcategory2;
+          if(!m[k2])m[k2]={};
+          m[k2][r.priority]=(m[k2][r.priority]||0)+1;
+        }
       }
     });
     const out={};
-    Object.entries(m).forEach(([sub,counts])=>{
-      out[sub]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+    Object.entries(m).forEach(([key,counts])=>{
+      out[key]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
     });
     return out;
   },[rules]);
@@ -548,7 +555,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
         :h("button",{className:"sub-btn",onClick:()=>setAddingNew(true),style:{padding:"3px 8px"}},"+")
     ),
     showSubs&&tx.subcategory&&h("div",{className:"sub2-picker"},
-      (sub2Config[tx.subcategory]||[]).map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>onSub2(tx.id,tx.subcategory2===s?null:s)},s)),
+      (sub2Config[tx.subcategory]||[]).map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>{const newSub2=tx.subcategory2===s?null:s;onSub2(tx.id,newSub2);if(newSub2&&subPriorityDefaults){const p=subPriorityDefaults[tx.subcategory+"|"+newSub2];if(p)onPriority(tx.id,p);}}},s)),
       addingSub2
         ?h(React.Fragment,null,
           h("input",{style:{width:90,padding:"3px 8px",borderRadius:12,border:"1px solid var(--color-border-secondary,#aaa)",fontSize:11,fontFamily:'"DM Mono",monospace'},value:newSub2,onChange:e=>setNewSub2(e.target.value),onKeyDown:e=>{if(e.key==="Enter")doAddSub2();if(e.key==="Escape"){setAddingSub2(false);setNewSub2("");}},placeholder:"new detail",autoFocus:true}),
