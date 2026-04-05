@@ -739,63 +739,6 @@ function CategoryPriorities({subPriorityMap,onAssign}){
   );
 }
 
-function ReorganiseCategories({allSubs,sub2Config,onReorganise}){
-  const[open,setOpen]=useState(false);
-  const[vals,setVals]=useState({});
-  const setVal=(sub,field,v)=>setVals(prev=>({...prev,[sub]:{...(prev[sub]||{}),primary:(prev[sub]?.primary??sub),detail:(prev[sub]?.detail??""),[field]:v}}));
-  const getRow=sub=>({primary:vals[sub]?.primary??sub,detail:vals[sub]?.detail??""});
-  const[done,setDone]=useState({});
-  const apply=(sub)=>{
-    const{primary,detail}=getRow(sub);
-    if(!primary.trim())return;
-    onReorganise(sub,primary,detail);
-    setDone(d=>({...d,[sub]:true}));
-    setTimeout(()=>setDone(d=>{const n={...d};delete n[sub];return n;}),2000);
-  };
-  return h("div",{className:"card",style:{marginBottom:20}},
-    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
-      h("div",null,
-        h("span",{style:{fontSize:13,fontWeight:500}},"Reorganise categories"),
-        h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",marginLeft:8}},allSubs.length+" subcategor"+(allSubs.length===1?"y":"ies"))
-      ),
-      h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>setOpen(o=>!o)},open?"Hide ▲":"Edit ▼")
-    ),
-    open&&h("div",{style:{marginTop:12,display:"flex",flexDirection:"column",gap:2}},
-      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:"4px 8px",alignItems:"center",padding:"0 0 6px",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",marginBottom:4}},
-        h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)"}},"current"),
-        h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)"}},"new primary"),
-        h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)"}},"detail"),
-        null
-      ),
-      allSubs.map(sub=>{
-        const{primary,detail}=getRow(sub);
-        const changed=primary.trim()!==sub||(detail.trim()!=="");
-        const detailListId="reorg-detail-"+sub.replace(/\s+/g,"-");
-        const detailOpts=(sub2Config&&sub2Config[primary.trim().toLowerCase()])||[];
-        return h("div",{key:sub,style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:"4px 8px",alignItems:"center",padding:"4px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)"}},
-          h("span",{className:"mono",style:{fontSize:12,textTransform:"capitalize",color:"var(--color-text-secondary,#666)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},sub),
-          h("input",{type:"text",value:primary,onChange:e=>setVal(sub,"primary",e.target.value),
-            list:"reorg-subs-list",
-            style:{fontSize:12,padding:"3px 7px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent",width:"100%"}}),
-          h(React.Fragment,null,
-            h("input",{type:"text",value:detail,onChange:e=>setVal(sub,"detail",e.target.value),
-              list:detailListId,
-              placeholder:"detail (optional)",
-              style:{fontSize:12,padding:"3px 7px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent",width:"100%",color:"var(--color-text-secondary,#666)"}}),
-            detailOpts.length>0&&h("datalist",{id:detailListId},detailOpts.map(o=>h("option",{key:o,value:o})))
-          ),
-          h("button",{
-            className:"pill"+(done[sub]?" pill-confirm":changed?" pill-primary":""),
-            style:{fontSize:11,padding:"3px 10px",opacity:changed||done[sub]?1:0.4,whiteSpace:"nowrap"},
-            disabled:!changed&&!done[sub],
-            onClick:()=>apply(sub)},
-            done[sub]?"✓ Done":"Apply")
-        );
-      }),
-      h("datalist",{id:"reorg-subs-list"},allSubs.map(s=>h("option",{key:s,value:s})))
-    )
-  );
-}
 
 function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub}){
   const[allTxs,setAllTxs]=useState([]);
@@ -1133,8 +1076,6 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       // ── Category priorities ──
       subPriorityMap.length>0&&h(CategoryPriorities,{subPriorityMap,onAssign:bulkAssignPriority}),
 
-      // ── Reorganise categories ──
-      allSubs.length>0&&h(ReorganiseCategories,{allSubs,sub2Config,onReorganise:bulkReorganiseSub}),
 
       // Stats
       h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",fontSize:12,color:"var(--color-text-secondary,#666)"}},
