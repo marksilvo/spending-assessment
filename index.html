@@ -414,7 +414,7 @@ function priorityLabel(p){if(!p)return null;if(p==="na")return"NA";return p.char
 function PriorityBadge({priority}){if(!priority)return null;return h("span",{className:"badge-"+priority},priorityLabel(priority));}
 
 function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,subs,addSub,sub2Config,onSub2,addSub2Option}){
-  const[showSubs,setShowSubs]=useState(!!tx.confirmed);
+  const[showSubs,setShowSubs]=useState(false);
   const[showSplit,setShowSplit]=useState(false);
   const[splitAmt,setSplitAmt]=useState("");
   const[addingNew,setAddingNew]=useState(false);
@@ -460,9 +460,9 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
       h("span",{style:{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},tx.description),
       h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:isRefund?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount)),
       h("div",{style:{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap"}},
-        predicted&&h("button",{className:"pill",style:{padding:"3px 8px",fontSize:11,borderColor:"var(--color-border-success,#97c459)",color:"var(--color-text-success,#3b6d11)"},onClick:()=>{onConfirm(tx.id);setShowSubs(true);}},"✓"),
-        h("button",{className:"cat-btn"+(isJ?(predicted?" predicted-j":" active-j"):""),onClick:()=>{onCat(tx.id,"joint");setShowSubs(true);}},(!predicted&&isJ)&&h(CheckIcon)," J"),
-        h("button",{className:"cat-btn"+(isP?(predicted?" predicted-p":" active-p"):""),onClick:()=>{onCat(tx.id,"personal");setShowSubs(true);}},(!predicted&&isP)&&h(CheckIcon)," P"),
+        predicted&&h("button",{className:"pill",style:{padding:"3px 8px",fontSize:11,borderColor:"var(--color-border-success,#97c459)",color:"var(--color-text-success,#3b6d11)"},onClick:()=>{onConfirm(tx.id);}},"✓"),
+        h("button",{className:"cat-btn"+(isJ?(predicted?" predicted-j":" active-j"):""),onClick:()=>{onCat(tx.id,"joint");if(!tx.subcategory)setShowSubs(true);}},(!predicted&&isJ)&&h(CheckIcon)," J"),
+        h("button",{className:"cat-btn"+(isP?(predicted?" predicted-p":" active-p"):""),onClick:()=>{onCat(tx.id,"personal");if(!tx.subcategory)setShowSubs(true);}},(!predicted&&isP)&&h(CheckIcon)," P"),
         !tx.splitFrom&&tx.amount>0&&h("button",{className:"cat-btn",onClick:()=>setShowSplit(!showSplit),style:{fontSize:11,padding:"4px 8px"}},showSplit?"Cancel":"÷"),
         h("button",{className:"recurring-toggle"+(tx.recurring?" active":""),onClick:()=>{
           const next=!tx.recurring;setShowFreq(next);
@@ -494,11 +494,20 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
       h("button",{className:"cat-btn"+(splitCat2==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat2("personal")},"P"),
       h("button",{className:"pill",style:{padding:"3px 10px",marginLeft:4},onClick:doSplit},"Split")
     ),
-    (showSubs||predicted||tx.confirmed)&&tx.category&&h("div",{className:"priority-picker"},
+    // Collapsed summary row — click subcategory to expand pickers
+    !showSubs&&tx.category&&h("div",{className:"sub-picker",style:{alignItems:"center",gap:6}},
+      tx.subcategory
+        ?h("button",{className:"sub-btn"+(predicted?" predicted":" active"),onClick:()=>setShowSubs(true)},tx.subcategory)
+        :h("button",{className:"sub-btn",style:{opacity:.6},onClick:()=>setShowSubs(true)},"+ category"),
+      tx.subcategory2&&h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)"}},"› "+tx.subcategory2),
+      tx.priority&&h("span",{className:"badge-"+tx.priority},priorityLabel(tx.priority))
+    ),
+    // Expanded pickers
+    showSubs&&tx.category&&h("div",{className:"priority-picker"},
       PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(tx.priority===p?" active-"+p:""),onClick:()=>onPriority(tx.id,tx.priority===p?null:p)},priorityLabel(p)))
     ),
-    (showSubs||predicted||tx.confirmed)&&tx.category&&h("div",{className:"sub-picker"},
-      subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?(predicted?" predicted":" active"):""),onClick:()=>{onSub(tx.id,s);if(!tx.confirmed)onConfirm(tx.id);}},s)),
+    showSubs&&tx.category&&h("div",{className:"sub-picker"},
+      subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(tx.id,s);if(!tx.confirmed)onConfirm(tx.id);setShowSubs(false);}},s)),
       addingNew
         ?h(React.Fragment,null,
           h("input",{style:{width:90,padding:"3px 8px",borderRadius:12,border:"1px solid var(--color-border-secondary,#aaa)",fontSize:11,fontFamily:'"DM Mono",monospace'},value:newSub,onChange:e=>setNewSub(e.target.value),onKeyDown:e=>{if(e.key==="Enter")doAddSub();if(e.key==="Escape"){setAddingNew(false);setNewSub("");}},placeholder:"new category",autoFocus:true}),
@@ -506,7 +515,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
           h("button",{className:"sub-btn",onClick:()=>{setAddingNew(false);setNewSub("");},style:{padding:"3px 6px"}},"×"))
         :h("button",{className:"sub-btn",onClick:()=>setAddingNew(true),style:{padding:"3px 8px"}},"+")
     ),
-    (showSubs||predicted||tx.confirmed)&&tx.subcategory&&h("div",{className:"sub2-picker"},
+    showSubs&&tx.subcategory&&h("div",{className:"sub2-picker"},
       (sub2Config[tx.subcategory]||[]).map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>onSub2(tx.id,tx.subcategory2===s?null:s)},s)),
       addingSub2
         ?h(React.Fragment,null,
