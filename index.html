@@ -370,7 +370,7 @@ function App(){
 
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
-    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,sub2Config,onAddSub2Option:addSub2Option})
+    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub})
   );
 }
 
@@ -718,7 +718,7 @@ function CategoryPriorities({subPriorityMap,onAssign}){
   );
 }
 
-function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,sub2Config,onAddSub2Option}){
+function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,sub2Config,onAddSub2Option,onAddSub}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
   const[loading,setLoading]=useState(false);
@@ -1081,12 +1081,12 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
         h(SubBreak,{groups:subBreakP})),
 
       // Expandable transactions
-      h(TrendsTxList,{txs:filteredTxs,onRecurring:setTrendsRecurring,onNotes:setTrendsNotes,onPriority:setTrendsPriority,onCat:setTrendsCat,onSub:setTrendsSub,subs:allSubs,sub2Config,onSub2:setTrendsSub2,onAddSub2Option})
+      h(TrendsTxList,{txs:filteredTxs,onRecurring:setTrendsRecurring,onNotes:setTrendsNotes,onPriority:setTrendsPriority,onCat:setTrendsCat,onSub:setTrendsSub,subs:allSubs,onAddSub,sub2Config,onSub2:setTrendsSub2,onAddSub2Option})
     )
   );
 }
 
-function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,sub2Config,onSub2,onAddSub2Option}){
+function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAddSub,sub2Config,onSub2,onAddSub2Option}){
   const[open,setOpen]=useState(false);
   const[editingId,setEditingId]=useState(null);
   const[editFreq,setEditFreq]=useState(null);
@@ -1095,6 +1095,8 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,sub2C
   const[draftNote,setDraftNote]=useState("");
   const[priorityEditId,setPriorityEditId]=useState(null);
   const[subPickerId,setSubPickerId]=useState(null);
+  const[addingNewSub,setAddingNewSub]=useState(false);
+  const[newSubValue,setNewSubValue]=useState("");
   const[sub2PickerId,setSub2PickerId]=useState(null);
   const[addingSub2TrendsId,setAddingSub2TrendsId]=useState(null);
   const[newSub2Trends,setNewSub2Trends]=useState("");
@@ -1142,7 +1144,13 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,sub2C
             onSub2&&tx.subcategory&&h("button",{className:"sub-btn"+(tx.subcategory2?" active":""),style:{marginLeft:2,fontSize:10,padding:"2px 6px"},onClick:()=>{setSub2PickerId(sub2PickerId===txKey?null:txKey);setAddingSub2TrendsId(null);}},tx.subcategory2?"› "+tx.subcategory2:"› detail")
           ),
           subPickerId===txKey&&onSub&&h("div",{className:"sub-picker",style:{paddingLeft:0,paddingTop:4}},
-            subs&&subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(txKey,s);setSubPickerId(null);}},s))
+            subs&&subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(txKey,s);setSubPickerId(null);setAddingNewSub(false);setNewSubValue("");}},s)),
+            addingNewSub
+              ?h(React.Fragment,null,
+                h("input",{style:{width:100,padding:"3px 8px",borderRadius:12,border:"1px solid var(--color-border-secondary,#aaa)",fontSize:11,fontFamily:'"DM Mono",monospace'},value:newSubValue,onChange:e=>setNewSubValue(e.target.value),onKeyDown:e=>{if(e.key==="Enter"&&newSubValue.trim()){onAddSub&&onAddSub(newSubValue);onSub(txKey,newSubValue.trim().toLowerCase());setSubPickerId(null);setAddingNewSub(false);setNewSubValue("");}if(e.key==="Escape"){setAddingNewSub(false);setNewSubValue("");}},placeholder:"new category",autoFocus:true}),
+                h("button",{className:"sub-btn",style:{padding:"3px 6px"},onClick:()=>{if(newSubValue.trim()){onAddSub&&onAddSub(newSubValue);onSub(txKey,newSubValue.trim().toLowerCase());setSubPickerId(null);setAddingNewSub(false);setNewSubValue("");}}},"✓"),
+                h("button",{className:"sub-btn",style:{padding:"3px 6px"},onClick:()=>{setAddingNewSub(false);setNewSubValue("");}},"×"))
+              :h("button",{className:"sub-btn",style:{padding:"3px 8px"},onClick:()=>setAddingNewSub(true)},"+")
           ),
           sub2PickerId===txKey&&onSub2&&tx.subcategory&&h("div",{className:"sub2-picker",style:{paddingLeft:0,paddingTop:4}},
             (sub2Config&&sub2Config[tx.subcategory]||[]).map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>{onSub2(txKey,tx.subcategory2===s?null:s);setSub2PickerId(null);}},s)),
