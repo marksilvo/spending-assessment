@@ -330,8 +330,22 @@ function App(){
   // Auto-load rules from folder when connected
   const loadRulesFromDir=useCallback(async(dh)=>{
     try{const fh=await dh.getFileHandle(RULES_FILE);const file=await fh.getFile();const text=await file.text();const imp=JSON.parse(text);const newRules=imp.rules||imp;const m={...rules,...newRules};setRules(m);if(imp.sub2Config)setSub2Config(prev=>({...prev,...imp.sub2Config}));}catch{}
-    // Derive active subcategories from actual transaction data in master.json
-    try{const master=await readMasterFromDir(dh);const masterSubs=[...new Set(master.map(t=>t.subcategory).filter(Boolean))].sort();if(masterSubs.length)setSubs(masterSubs);}catch{}
+    // Derive active subcategories from master.json and clean stale rule references
+    try{
+      const master=await readMasterFromDir(dh);
+      const masterSubs=new Set(master.map(t=>t.subcategory).filter(Boolean));
+      if(masterSubs.size){
+        setSubs([...masterSubs].sort());
+        setRules(prev=>{
+          const cleaned={...prev};
+          Object.keys(cleaned).forEach(k=>{
+            if(cleaned[k].subcategory&&!masterSubs.has(cleaned[k].subcategory))
+              cleaned[k]={...cleaned[k],subcategory:null,subcategory2:null};
+          });
+          return cleaned;
+        });
+      }
+    }catch{}
   },[rules]);
   const reset=()=>{setView("upload");setTxs([]);setError(null);};
   const[confirmReset,setConfirmReset]=useState(false);
