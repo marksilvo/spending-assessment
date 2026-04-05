@@ -546,7 +546,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
       PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(tx.priority===p?" active-"+p:""),onClick:()=>onPriority(tx.id,tx.priority===p?null:p)},priorityLabel(p)))
     ),
     showSubs&&tx.category&&h("div",{className:"sub-picker"},
-      subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(tx.id,s);if(!tx.priority&&subPriorityDefaults&&subPriorityDefaults[s])onPriority(tx.id,subPriorityDefaults[s]);if(!tx.confirmed)onConfirm(tx.id);setShowSubs(false);}},s)),
+      subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(tx.id,s);if(!tx.priority&&subPriorityDefaults&&subPriorityDefaults[s])onPriority(tx.id,subPriorityDefaults[s]);if(!tx.confirmed)onConfirm(tx.id);}},s)),
       addingNew
         ?h(React.Fragment,null,
           h("input",{style:{width:90,padding:"3px 8px",borderRadius:12,border:"1px solid var(--color-border-secondary,#aaa)",fontSize:11,fontFamily:'"DM Mono",monospace'},value:newSub,onChange:e=>setNewSub(e.target.value),onKeyDown:e=>{if(e.key==="Enter")doAddSub();if(e.key==="Escape"){setAddingNew(false);setNewSub("");}},placeholder:"new category",autoFocus:true}),
@@ -908,18 +908,23 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const[priorityFilter,setPriorityFilter]=useState("all");
   const hasAnyPriority=React.useMemo(()=>allTxs.some(t=>t.priority),[allTxs]);
 
-  // Detail options available for currently selected primary subcategories
+  // Detail options for the active primary filter — from transactions AND sub2Config
   const availableSub2Opts=React.useMemo(()=>{
     if(!subFilter.length)return[];
     const opts=new Set();
+    // From actual transaction data (catches newly added values not yet in sub2Config)
+    allTxs.filter(t=>subFilter.includes(t.subcategory)&&t.subcategory2).forEach(t=>opts.add(t.subcategory2));
+    // From sub2Config (catches configured options not yet on any transaction)
     subFilter.forEach(s=>(sub2Config[s]||[]).forEach(o=>opts.add(o)));
     return[...opts].sort();
-  },[subFilter,sub2Config]);
+  },[subFilter,sub2Config,allTxs]);
 
   // Drop sub2Filter entries that no longer belong to the active subFilter
   useEffect(()=>{
-    setSub2Filter(prev=>prev.filter(d=>subFilter.some(s=>(sub2Config[s]||[]).includes(d))));
-  },[subFilter,sub2Config]);
+    setSub2Filter(prev=>prev.filter(d=>subFilter.some(s=>
+      (sub2Config[s]||[]).includes(d)||allTxs.some(t=>t.subcategory===s&&t.subcategory2===d)
+    )));
+  },[subFilter,sub2Config,allTxs]);
 
   // Reset date bounds when data first loads
   useEffect(()=>{
