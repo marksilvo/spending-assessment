@@ -169,6 +169,22 @@ function App(){
     (async()=>{try{const fh=await appDirHandle.getFileHandle(RULES_FILE,{create:true});const w=await fh.createWritable();await w.write(JSON.stringify(data,null,2));await w.close();}catch{}})();
   },[rules,subs,sub2Config,appDirHandle]);
 
+  // Dominant priority per subcategory derived from rules — used to auto-assign on sub selection
+  const subPriorityDefaults=React.useMemo(()=>{
+    const m={};
+    Object.values(rules).forEach(r=>{
+      if(r.subcategory&&r.priority){
+        if(!m[r.subcategory])m[r.subcategory]={};
+        m[r.subcategory][r.priority]=(m[r.subcategory][r.priority]||0)+1;
+      }
+    });
+    const out={};
+    Object.entries(m).forEach(([sub,counts])=>{
+      out[sub]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+    });
+    return out;
+  },[rules]);
+
   const addSub=useCallback((name)=>{
     const clean=name.trim().toLowerCase();
     if(!clean||subs.includes(clean))return;
@@ -413,7 +429,7 @@ function App(){
         }},"All uncategorised → Personal")
       ),
 
-      h("div",{style:{display:"flex",flexDirection:"column",gap:1}},txs.map(tx=>h(TxRow,{key:tx.id,tx,onCat:categorise,onSub:setSub,onConfirm:confirm,onSplit:splitTx,onRecurring:setRecurring,onNotes:setNotes,onPriority:setPriority,subs,addSub,sub2Config,onSub2:setSub2,addSub2Option}))),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:1}},txs.map(tx=>h(TxRow,{key:tx.id,tx,onCat:categorise,onSub:setSub,onConfirm:confirm,onSplit:splitTx,onRecurring:setRecurring,onNotes:setNotes,onPriority:setPriority,subs,addSub,sub2Config,onSub2:setSub2,addSub2Option,subPriorityDefaults}))),
 
       allDone&&h("div",{style:{textAlign:"center",marginTop:24}},h("button",{className:"pill pill-primary",style:{padding:"10px 24px",fontSize:14},onClick:()=>setView("summary")},"View summary →"))
     ),
@@ -429,8 +445,8 @@ const PRIORITIES=["essential","lifestyle","luxury","na"];
 function priorityLabel(p){if(!p)return null;if(p==="na")return"NA";return p.charAt(0).toUpperCase()+p.slice(1);}
 function PriorityBadge({priority}){if(!priority)return null;return h("span",{className:"badge-"+priority},priorityLabel(priority));}
 
-function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,subs,addSub,sub2Config,onSub2,addSub2Option}){
-  const[showSubs,setShowSubs]=useState(false);
+function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,subs,addSub,sub2Config,onSub2,addSub2Option,subPriorityDefaults}){
+  const[showSubs,setShowSubs]=useState(!tx.confirmed);
   const[showSplit,setShowSplit]=useState(false);
   const[splitAmt,setSplitAmt]=useState("");
   const[addingNew,setAddingNew]=useState(false);
@@ -477,8 +493,8 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
       h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:isRefund?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount)),
       h("div",{style:{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap"}},
         predicted&&h("button",{className:"pill",style:{padding:"3px 8px",fontSize:11,borderColor:"var(--color-border-success,#97c459)",color:"var(--color-text-success,#3b6d11)"},onClick:()=>{onConfirm(tx.id);}},"✓"),
-        h("button",{className:"cat-btn"+(isJ?(predicted?" predicted-j":" active-j"):""),onClick:()=>{onCat(tx.id,"joint");if(!tx.subcategory)setShowSubs(true);}},(!predicted&&isJ)&&h(CheckIcon)," J"),
-        h("button",{className:"cat-btn"+(isP?(predicted?" predicted-p":" active-p"):""),onClick:()=>{onCat(tx.id,"personal");if(!tx.subcategory)setShowSubs(true);}},(!predicted&&isP)&&h(CheckIcon)," P"),
+        h("button",{className:"cat-btn"+(isJ?(predicted?" predicted-j":" active-j"):""),onClick:()=>{onCat(tx.id,"joint");setShowSubs(true);}},(!predicted&&isJ)&&h(CheckIcon)," J"),
+        h("button",{className:"cat-btn"+(isP?(predicted?" predicted-p":" active-p"):""),onClick:()=>{onCat(tx.id,"personal");setShowSubs(true);}},(!predicted&&isP)&&h(CheckIcon)," P"),
         !tx.splitFrom&&tx.amount>0&&h("button",{className:"cat-btn",onClick:()=>setShowSplit(!showSplit),style:{fontSize:11,padding:"4px 8px"}},showSplit?"Cancel":"÷"),
         h("button",{className:"recurring-toggle"+(tx.recurring?" active":""),onClick:()=>{
           const next=!tx.recurring;setShowFreq(next);
@@ -523,7 +539,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
       PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(tx.priority===p?" active-"+p:""),onClick:()=>onPriority(tx.id,tx.priority===p?null:p)},priorityLabel(p)))
     ),
     showSubs&&tx.category&&h("div",{className:"sub-picker"},
-      subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(tx.id,s);if(!tx.confirmed)onConfirm(tx.id);setShowSubs(false);}},s)),
+      subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(tx.id,s);if(!tx.priority&&subPriorityDefaults&&subPriorityDefaults[s])onPriority(tx.id,subPriorityDefaults[s]);if(!tx.confirmed)onConfirm(tx.id);setShowSubs(false);}},s)),
       addingNew
         ?h(React.Fragment,null,
           h("input",{style:{width:90,padding:"3px 8px",borderRadius:12,border:"1px solid var(--color-border-secondary,#aaa)",fontSize:11,fontFamily:'"DM Mono",monospace'},value:newSub,onChange:e=>setNewSub(e.target.value),onKeyDown:e=>{if(e.key==="Enter")doAddSub();if(e.key==="Escape"){setAddingNew(false);setNewSub("");}},placeholder:"new category",autoFocus:true}),
