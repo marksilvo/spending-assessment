@@ -114,7 +114,7 @@ function matchRule(desc,rules){
 function applyPredictions(txs,rules){
   return txs.map(tx=>{
     const rule=matchRule(tx.description,rules);
-    if(rule)return{...tx,category:rule.category,subcategory:rule.subcategory,confirmed:false};
+    if(rule)return{...tx,category:rule.category,subcategory:rule.subcategory,confirmed:false,recurring:rule.recurring||false,recurringFrequency:rule.recurringFrequency||null,recurringCustom:rule.recurringCustom||null};
     return tx;
   });
 }
@@ -177,7 +177,7 @@ function App(){
     setTxs(prev=>prev.map(tx=>{
       if(tx.id!==id)return tx;
       const k=normMerchant(tx.description);
-      if(k&&!tx.splitFrom)setRules(r=>({...r,[k]:{category:cat,subcategory:tx.subcategory}}));
+      if(k&&!tx.splitFrom)setRules(r=>({...r,[k]:{...r[k],category:cat,subcategory:tx.subcategory}}));
       return{...tx,category:cat,confirmed:true};
     }));
   },[]);
@@ -186,7 +186,7 @@ function App(){
     setTxs(prev=>prev.map(tx=>{
       if(tx.id!==id)return tx;
       const k=normMerchant(tx.description);
-      if(k&&!tx.splitFrom)setRules(r=>({...r,[k]:{category:tx.category,subcategory:sub}}));
+      if(k&&!tx.splitFrom)setRules(r=>({...r,[k]:{...r[k],category:tx.category,subcategory:sub}}));
       return{...tx,subcategory:sub};
     }));
   },[]);
@@ -204,6 +204,8 @@ function App(){
   const setRecurring=useCallback((id,recurring,frequency,custom)=>{
     setTxs(prev=>prev.map(tx=>{
       if(tx.id!==id)return tx;
+      const k=normMerchant(tx.description);
+      if(k&&!tx.splitFrom)setRules(r=>({...r,[k]:{...r[k],recurring,recurringFrequency:recurring?frequency:null,recurringCustom:recurring&&frequency==="custom"?custom:null}}));
       return{...tx,recurring,recurringFrequency:recurring?frequency:null,recurringCustom:recurring&&frequency==="custom"?custom:null};
     }));
   },[]);
