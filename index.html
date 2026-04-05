@@ -205,13 +205,13 @@ function App(){
     }));
   },[]);
 
-  const splitTx=useCallback((id,jointAmt)=>{
+  const splitTx=useCallback((id,amt1,cat1,cat2)=>{
     setTxs(prev=>{
       const tx=prev.find(t=>t.id===id);if(!tx)return prev;
-      const pAmt=tx.amount-jointAmt;
-      const jTx={...tx,id:crypto.randomUUID(),amount:jointAmt,category:"joint",confirmed:true,splitFrom:tx.id,description:tx.description+" (split)"};
-      const pTx={...tx,id:crypto.randomUUID(),amount:pAmt,category:"personal",confirmed:true,splitFrom:tx.id,description:tx.description+" (split)"};
-      return prev.filter(t=>t.id!==id).concat([jTx,pTx]).sort((a,b)=>a.date.localeCompare(b.date));
+      const amt2=parseFloat((tx.amount-amt1).toFixed(2));
+      const tx1={...tx,id:crypto.randomUUID(),amount:amt1,category:cat1,subcategory:null,confirmed:true,splitFrom:tx.id,description:tx.description+" (split)"};
+      const tx2={...tx,id:crypto.randomUUID(),amount:amt2,category:cat2,subcategory:null,confirmed:true,splitFrom:tx.id,description:tx.description+" (split)"};
+      return prev.filter(t=>t.id!==id).concat([tx1,tx2]).sort((a,b)=>a.date.localeCompare(b.date));
     });
   },[]);
 
@@ -364,15 +364,17 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
   const[showFreq,setShowFreq]=useState(!!tx.recurring);
   const[customFreq,setCustomFreq]=useState(tx.recurringCustom||"");
   const[showNotes,setShowNotes]=useState(!!tx.notes);
+  const[splitCat1,setSplitCat1]=useState(tx.category||"joint");
+  const[splitCat2,setSplitCat2]=useState(tx.category==="personal"?"joint":"personal");
   const isJ=tx.category==="joint",isP=tx.category==="personal";
   const predicted=tx.category&&!tx.confirmed;
   const done=tx.confirmed&&tx.subcategory;
   const isRefund=tx.amount<0;
 
   const doSplit=()=>{
-    const jAmt=parseFloat(splitAmt);
-    if(isNaN(jAmt)||jAmt<=0||jAmt>=tx.amount)return;
-    onSplit(tx.id,jAmt);setShowSplit(false);
+    const a1=parseFloat(splitAmt);
+    if(isNaN(a1)||a1<=0||a1>=tx.amount)return;
+    onSplit(tx.id,a1,splitCat1,splitCat2);setShowSplit(false);
   };
 
   const doAddSub=()=>{
@@ -412,11 +414,17 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
     showNotes&&h("div",{className:"notes-row"},
       h("textarea",{className:"notes-input",rows:2,maxLength:200,value:tx.notes||"",placeholder:"Add a note…",onChange:e=>onNotes(tx.id,e.target.value)})
     ),
-    showSplit&&h("div",{className:"split-row"},
-      h("span",{style:{color:"var(--color-text-secondary,#666)"}},"Joint amount:"),
-      h("input",{className:"split-input",type:"number",step:"0.01",min:"0.01",max:(tx.amount-0.01).toFixed(2),value:splitAmt,onChange:e=>setSplitAmt(e.target.value),placeholder:"0.00"}),
-      h("span",{style:{color:"var(--color-text-tertiary,#aaa)",fontSize:11}},splitAmt&&!isNaN(parseFloat(splitAmt))?"Personal: £"+(tx.amount-parseFloat(splitAmt)).toFixed(2):""),
-      h("button",{className:"pill",style:{padding:"3px 10px"},onClick:doSplit},"Split")
+    showSplit&&h("div",{className:"split-row",style:{flexWrap:"wrap",gap:8}},
+      h("span",{style:{color:"var(--color-text-tertiary,#aaa)",fontSize:11,minWidth:36}},"Part 1"),
+      h("input",{className:"split-input",type:"number",step:"0.01",min:"0.01",max:(tx.amount-0.01).toFixed(2),value:splitAmt,onChange:e=>setSplitAmt(e.target.value),placeholder:"0.00",autoFocus:true}),
+      h("button",{className:"cat-btn"+(splitCat1==="joint"?" active-j":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat1("joint")},"J"),
+      h("button",{className:"cat-btn"+(splitCat1==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat1("personal")},"P"),
+      h("span",{style:{color:"var(--color-text-tertiary,#aaa)",fontSize:11,minWidth:36,marginLeft:8}},"Part 2"),
+      h("span",{className:"split-input mono",style:{lineHeight:"28px",color:"var(--color-text-secondary,#666)"}},
+        splitAmt&&!isNaN(parseFloat(splitAmt))?"£"+(tx.amount-parseFloat(splitAmt)).toFixed(2):"—"),
+      h("button",{className:"cat-btn"+(splitCat2==="joint"?" active-j":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat2("joint")},"J"),
+      h("button",{className:"cat-btn"+(splitCat2==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat2("personal")},"P"),
+      h("button",{className:"pill",style:{padding:"3px 10px",marginLeft:4},onClick:doSplit},"Split")
     ),
     (showSubs||predicted||tx.confirmed)&&tx.category&&h("div",{className:"priority-picker"},
       PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(tx.priority===p?" active-"+p:""),onClick:()=>onPriority(tx.id,tx.priority===p?null:p)},priorityLabel(p)))
