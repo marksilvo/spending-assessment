@@ -280,6 +280,11 @@ function App(){
     });
   },[]);
 
+  const updateSub2Rule=useCallback((description,splitFrom,sub2)=>{
+    const k=normMerchant(description);
+    if(k&&!splitFrom)setRules(r=>({...r,[k]:{...r[k],subcategory2:sub2||null}}));
+  },[]);
+
   const assignPriorityBySub2=useCallback((subcategory,sub2,priority)=>{
     setRules(r=>{
       const updated={...r};
@@ -399,7 +404,7 @@ function App(){
 
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
-    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,onSub2PriorityAssign:assignPriorityBySub2,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub})
+    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,onSub2PriorityAssign:assignPriorityBySub2,onSub2Rule:updateSub2Rule,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub})
   );
 }
 
@@ -593,7 +598,7 @@ function SubBreak({groups}){
 function grpSub(txs){const m={};txs.forEach(t=>{const k=t.subcategory||"(none)";if(!m[k])m[k]={name:k,total:0,count:0};m[k].total+=t.amount;m[k].count++;});return Object.values(m).sort((a,b)=>b.total-a.total);}
 
 // ── Trends ──
-const ENRICH_FIELDS=["category","subcategory","recurring","recurringFrequency","recurringCustom","notes","priority"];
+const ENRICH_FIELDS=["category","subcategory","subcategory2","recurring","recurringFrequency","recurringCustom","notes","priority"];
 function dedup(txs){
   const seen=new Map();
   for(const t of txs){
@@ -760,7 +765,7 @@ function CategoryPriorities({subPriorityMap,onAssign,onAssign2}){
 }
 
 
-function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,onSub2PriorityAssign,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub}){
+function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,onSub2PriorityAssign,onSub2Rule,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
   const[loading,setLoading]=useState(false);
@@ -936,9 +941,11 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const setTrendsSub2=useCallback((txKey,sub2)=>{
     setAllTxs(prev=>prev.map(tx=>{
       const key=tx.id||tx.date+tx.description+tx.amount;
-      return key===txKey?{...tx,subcategory2:sub2||null}:tx;
+      if(key!==txKey)return tx;
+      if(onSub2Rule)onSub2Rule(tx.description,tx.splitFrom,sub2);
+      return{...tx,subcategory2:sub2||null};
     }));
-  },[]);
+  },[onSub2Rule]);
 
   const setTrendsPriority=useCallback((txKey,priority)=>{
     setAllTxs(prev=>prev.map(tx=>{
