@@ -227,6 +227,14 @@ function App(){
     }));
   },[]);
 
+  const assignPriorityBySubcategory=useCallback((subcategory,priority)=>{
+    setRules(r=>{
+      const updated={...r};
+      Object.keys(updated).forEach(k=>{if(updated[k].subcategory===subcategory)updated[k]={...updated[k],priority};});
+      return updated;
+    });
+  },[]);
+
   const setRecurring=useCallback((id,recurring,frequency,custom)=>{
     setTxs(prev=>prev.map(tx=>{
       if(tx.id!==id)return tx;
@@ -337,7 +345,7 @@ function App(){
 
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
-    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir})
+    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory})
   );
 }
 
@@ -651,7 +659,7 @@ function CategoryPriorities({subPriorityMap,onAssign}){
   );
 }
 
-function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
+function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
   const[loading,setLoading]=useState(false);
@@ -802,7 +810,8 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected}){
 
   const bulkAssignPriority=useCallback((subcategory,priority)=>{
     setAllTxs(prev=>prev.map(tx=>tx.subcategory===subcategory?{...tx,priority}:tx));
-  },[]);
+    if(onSubPriorityAssign)onSubPriorityAssign(subcategory,priority);
+  },[onSubPriorityAssign]);
 
   // For each subcategory: dominant priority and count
   const subPriorityMap=React.useMemo(()=>{
