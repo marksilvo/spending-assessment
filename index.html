@@ -280,6 +280,14 @@ function App(){
     });
   },[]);
 
+  const assignPriorityBySub2=useCallback((subcategory,sub2,priority)=>{
+    setRules(r=>{
+      const updated={...r};
+      Object.keys(updated).forEach(k=>{if(updated[k].subcategory===subcategory&&updated[k].subcategory2===sub2)updated[k]={...updated[k],priority};});
+      return updated;
+    });
+  },[]);
+
   const setRecurring=useCallback((id,recurring,frequency,custom)=>{
     setTxs(prev=>prev.map(tx=>{
       if(tx.id!==id)return tx;
@@ -391,7 +399,7 @@ function App(){
 
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
-    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub})
+    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,onSub2PriorityAssign:assignPriorityBySub2,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub})
   );
 }
 
@@ -714,24 +722,36 @@ async function readCsvsFromDir(dirHandle){
   return{txs,names};
 }
 
-function CategoryPriorities({subPriorityMap,onAssign}){
+function CategoryPriorities({subPriorityMap,onAssign,onAssign2}){
   const[open,setOpen]=useState(false);
-  const unassigned=subPriorityMap.filter(r=>r.assigned<r.total).length;
+  const unassigned=subPriorityMap.reduce((n,r)=>{
+    let u=r.assigned<r.total?1:0;
+    r.sub2Rows.forEach(s=>{ if(s.assigned<s.total)u++; });
+    return n+u;
+  },0);
+  const PriorityRow=({label,dominant,assigned,total,onSet,indent})=>
+    h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",paddingLeft:indent?16:0}},
+      h("span",{className:"mono",style:{fontSize:indent?11:12,flex:1,textTransform:"capitalize",color:indent?"var(--color-text-secondary,#666)":undefined}},
+        indent&&h("span",{style:{color:"var(--color-text-tertiary,#aaa)",marginRight:3}},"›"),label),
+      h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",minWidth:48,textAlign:"right"}},assigned+"/"+total),
+      h("div",{style:{display:"flex",gap:4}},
+        PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(dominant===p?" active-"+p:""),onClick:()=>onSet(dominant===p?null:p)},priorityLabel(p)))
+      )
+    );
   return h("div",{className:"card",style:{marginBottom:20}},
     h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
       h("div",null,
         h("span",{style:{fontSize:13,fontWeight:500}},"Category priorities"),
-        unassigned>0&&h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",marginLeft:8}},unassigned+" categor"+(unassigned===1?"y":"ies")+" unassigned")
+        unassigned>0&&h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",marginLeft:8}},unassigned+" unassigned")
       ),
       h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>setOpen(o=>!o)},open?"Hide ▲":"Edit ▼")
     ),
     open&&h("div",{style:{marginTop:12,display:"flex",flexDirection:"column",gap:2}},
-      subPriorityMap.map(({sub,dominant,assigned,total})=>
-        h("div",{key:sub,style:{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)"}},
-          h("span",{className:"mono",style:{fontSize:12,flex:1,textTransform:"capitalize"}},sub),
-          h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",minWidth:48,textAlign:"right"}},assigned+"/"+total),
-          h("div",{style:{display:"flex",gap:4}},
-            PRIORITIES.map(p=>h("button",{key:p,className:"priority-btn"+(dominant===p?" active-"+p:""),onClick:()=>onAssign(sub,dominant===p?null:p)},priorityLabel(p)))
+      subPriorityMap.map(({sub,dominant,assigned,total,sub2Rows})=>
+        h(React.Fragment,{key:sub},
+          h(PriorityRow,{label:sub,dominant,assigned,total,indent:false,onSet:p=>onAssign(sub,p)}),
+          sub2Rows.map(({sub2,dominant:d2,assigned:a2,total:t2})=>
+            h(PriorityRow,{key:sub2,label:sub2,dominant:d2,assigned:a2,total:t2,indent:true,onSet:p=>onAssign2(sub,sub2,p)})
           )
         )
       )
@@ -740,7 +760,7 @@ function CategoryPriorities({subPriorityMap,onAssign}){
 }
 
 
-function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub}){
+function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,onSub2PriorityAssign,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
   const[loading,setLoading]=useState(false);
@@ -943,19 +963,34 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     if(onSubPriorityAssign)onSubPriorityAssign(subcategory,priority);
   },[onSubPriorityAssign]);
 
-  // For each subcategory: dominant priority and count
+  const bulkAssignPriority2=useCallback((subcategory,sub2,priority)=>{
+    setAllTxs(prev=>prev.map(tx=>tx.subcategory===subcategory&&tx.subcategory2===sub2?{...tx,priority}:tx));
+    if(onSub2PriorityAssign)onSub2PriorityAssign(subcategory,sub2,priority);
+  },[onSub2PriorityAssign]);
+
+  // For each subcategory (and sub2): dominant priority and count
   const subPriorityMap=React.useMemo(()=>{
     const m={};
     allTxs.forEach(t=>{
       if(!t.subcategory)return;
-      if(!m[t.subcategory])m[t.subcategory]={counts:{},total:0};
+      if(!m[t.subcategory])m[t.subcategory]={counts:{},total:0,sub2:{}};
       m[t.subcategory].total++;
       if(t.priority)m[t.subcategory].counts[t.priority]=(m[t.subcategory].counts[t.priority]||0)+1;
+      if(t.subcategory2){
+        if(!m[t.subcategory].sub2[t.subcategory2])m[t.subcategory].sub2[t.subcategory2]={counts:{},total:0};
+        m[t.subcategory].sub2[t.subcategory2].total++;
+        if(t.priority)m[t.subcategory].sub2[t.subcategory2].counts[t.priority]=(m[t.subcategory].sub2[t.subcategory2].counts[t.priority]||0)+1;
+      }
     });
-    return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).map(([sub,{counts,total}])=>{
+    return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).map(([sub,{counts,total,sub2}])=>{
       const dominant=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0]||null;
       const assigned=Object.values(counts).reduce((s,n)=>s+n,0);
-      return{sub,dominant,assigned,total};
+      const sub2Rows=Object.entries(sub2).sort((a,b)=>a[0].localeCompare(b[0])).map(([s2,{counts:c2,total:t2}])=>{
+        const dom2=Object.entries(c2).sort((a,b)=>b[1]-a[1])[0]?.[0]||null;
+        const ass2=Object.values(c2).reduce((s,n)=>s+n,0);
+        return{sub2:s2,dominant:dom2,assigned:ass2,total:t2};
+      });
+      return{sub,dominant,assigned,total,sub2Rows};
     });
   },[allTxs]);
 
@@ -1074,7 +1109,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       ),
 
       // ── Category priorities ──
-      subPriorityMap.length>0&&h(CategoryPriorities,{subPriorityMap,onAssign:bulkAssignPriority}),
+      subPriorityMap.length>0&&h(CategoryPriorities,{subPriorityMap,onAssign:bulkAssignPriority,onAssign2:bulkAssignPriority2}),
 
 
       // Stats
