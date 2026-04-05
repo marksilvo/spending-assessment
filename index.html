@@ -251,6 +251,27 @@ function App(){
     }));
   },[]);
 
+  const reorganiseSub=useCallback((oldSub,newPrimary,newDetail)=>{
+    const clean=newPrimary.trim().toLowerCase();
+    if(!clean)return;
+    // Update all rules with this subcategory
+    setRules(r=>{
+      const updated={...r};
+      Object.keys(updated).forEach(k=>{
+        if(updated[k].subcategory===oldSub)
+          updated[k]={...updated[k],subcategory:clean,subcategory2:newDetail||null};
+      });
+      return updated;
+    });
+    // Ensure newPrimary exists in subs
+    setSubs(prev=>prev.includes(clean)?prev:[...prev,clean]);
+    // Add newDetail as a sub2 option under newPrimary
+    if(newDetail){
+      const d=newDetail.trim().toLowerCase();
+      setSub2Config(prev=>({...prev,[clean]:[...new Set([...(prev[clean]||[]),d])]}));
+    }
+  },[]);
+
   const assignPriorityBySubcategory=useCallback((subcategory,priority)=>{
     setRules(r=>{
       const updated={...r};
@@ -370,7 +391,7 @@ function App(){
 
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
-    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub})
+    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub})
   );
 }
 
@@ -718,7 +739,65 @@ function CategoryPriorities({subPriorityMap,onAssign}){
   );
 }
 
-function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,sub2Config,onAddSub2Option,onAddSub}){
+function ReorganiseCategories({allSubs,sub2Config,onReorganise}){
+  const[open,setOpen]=useState(false);
+  const[vals,setVals]=useState({});
+  const setVal=(sub,field,v)=>setVals(prev=>({...prev,[sub]:{...(prev[sub]||{}),primary:(prev[sub]?.primary??sub),detail:(prev[sub]?.detail??""),[field]:v}}));
+  const getRow=sub=>({primary:vals[sub]?.primary??sub,detail:vals[sub]?.detail??""});
+  const[done,setDone]=useState({});
+  const apply=(sub)=>{
+    const{primary,detail}=getRow(sub);
+    if(!primary.trim())return;
+    onReorganise(sub,primary,detail);
+    setDone(d=>({...d,[sub]:true}));
+    setTimeout(()=>setDone(d=>{const n={...d};delete n[sub];return n;}),2000);
+  };
+  return h("div",{className:"card",style:{marginBottom:20}},
+    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
+      h("div",null,
+        h("span",{style:{fontSize:13,fontWeight:500}},"Reorganise categories"),
+        h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",marginLeft:8}},allSubs.length+" subcategor"+(allSubs.length===1?"y":"ies"))
+      ),
+      h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>setOpen(o=>!o)},open?"Hide ▲":"Edit ▼")
+    ),
+    open&&h("div",{style:{marginTop:12,display:"flex",flexDirection:"column",gap:2}},
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:"4px 8px",alignItems:"center",padding:"0 0 6px",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",marginBottom:4}},
+        h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)"}},"current"),
+        h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)"}},"new primary"),
+        h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)"}},"detail"),
+        null
+      ),
+      allSubs.map(sub=>{
+        const{primary,detail}=getRow(sub);
+        const changed=primary.trim()!==sub||(detail.trim()!=="");
+        const detailListId="reorg-detail-"+sub.replace(/\s+/g,"-");
+        const detailOpts=(sub2Config&&sub2Config[primary.trim().toLowerCase()])||[];
+        return h("div",{key:sub,style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:"4px 8px",alignItems:"center",padding:"4px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)"}},
+          h("span",{className:"mono",style:{fontSize:12,textTransform:"capitalize",color:"var(--color-text-secondary,#666)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},sub),
+          h("input",{type:"text",value:primary,onChange:e=>setVal(sub,"primary",e.target.value),
+            list:"reorg-subs-list",
+            style:{fontSize:12,padding:"3px 7px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent",width:"100%"}}),
+          h(React.Fragment,null,
+            h("input",{type:"text",value:detail,onChange:e=>setVal(sub,"detail",e.target.value),
+              list:detailListId,
+              placeholder:"detail (optional)",
+              style:{fontSize:12,padding:"3px 7px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent",width:"100%",color:"var(--color-text-secondary,#666)"}}),
+            detailOpts.length>0&&h("datalist",{id:detailListId},detailOpts.map(o=>h("option",{key:o,value:o})))
+          ),
+          h("button",{
+            className:"pill"+(done[sub]?" pill-confirm":changed?" pill-primary":""),
+            style:{fontSize:11,padding:"3px 10px",opacity:changed||done[sub]?1:0.4,whiteSpace:"nowrap"},
+            disabled:!changed&&!done[sub],
+            onClick:()=>apply(sub)},
+            done[sub]?"✓ Done":"Apply")
+        );
+      }),
+      h("datalist",{id:"reorg-subs-list"},allSubs.map(s=>h("option",{key:s,value:s})))
+    )
+  );
+}
+
+function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
   const[loading,setLoading]=useState(false);
@@ -804,6 +883,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const[dateTo,setDateTo]=useState("");
   const[catFilter,setCatFilter]=useState("all"); // "all"|"joint"|"personal"
   const[subFilter,setSubFilter]=useState([]); // [] = all
+  const[sub2Filter,setSub2Filter]=useState([]); // [] = all
   const[sourceFilter,setSourceFilter]=useState([]); // [] = all
   const[searchQuery,setSearchQuery]=useState("");
   const[recurringFilter,setRecurringFilter]=useState("all");
@@ -811,6 +891,19 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const hasAnyRecurring=React.useMemo(()=>allTxs.some(t=>t.recurring),[allTxs]);
   const[priorityFilter,setPriorityFilter]=useState("all");
   const hasAnyPriority=React.useMemo(()=>allTxs.some(t=>t.priority),[allTxs]);
+
+  // Detail options available for currently selected primary subcategories
+  const availableSub2Opts=React.useMemo(()=>{
+    if(!subFilter.length)return[];
+    const opts=new Set();
+    subFilter.forEach(s=>(sub2Config[s]||[]).forEach(o=>opts.add(o)));
+    return[...opts].sort();
+  },[subFilter,sub2Config]);
+
+  // Drop sub2Filter entries that no longer belong to the active subFilter
+  useEffect(()=>{
+    setSub2Filter(prev=>prev.filter(d=>subFilter.some(s=>(sub2Config[s]||[]).includes(d))));
+  },[subFilter,sub2Config]);
 
   // Reset date bounds when data first loads
   useEffect(()=>{
@@ -830,6 +923,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       if(dateTo&&t.date>dateTo)return false;
       if(catFilter!=="all"&&t.category!==catFilter)return false;
       if(subFilter.length&&!subFilter.includes(t.subcategory))return false;
+      if(sub2Filter.length&&!sub2Filter.includes(t.subcategory2))return false;
       if(sourceFilter.length&&!sourceFilter.includes(t.source))return false;
       if(searchQuery&&!t.description.toLowerCase().includes(searchQuery.toLowerCase()))return false;
       if(recurringFilter==="recurring"&&!t.recurring)return false;
@@ -839,7 +933,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       if(priorityFilter!=="all"&&priorityFilter!=="unassigned"&&t.priority!==priorityFilter)return false;
       return true;
     });
-  },[allTxs,dateFrom,dateTo,catFilter,subFilter,sourceFilter,recurringFilter,priorityFilter,searchQuery]);
+  },[allTxs,dateFrom,dateTo,catFilter,subFilter,sub2Filter,sourceFilter,recurringFilter,priorityFilter,searchQuery]);
 
   const monthly=React.useMemo(()=>{
     const m={};
@@ -891,6 +985,16 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     }));
   },[]);
 
+  const bulkReorganiseSub=useCallback((oldSub,newPrimary,newDetail)=>{
+    const clean=newPrimary.trim().toLowerCase();
+    if(!clean)return;
+    const detail=newDetail?newDetail.trim().toLowerCase():null;
+    setAllTxs(prev=>prev.map(tx=>
+      tx.subcategory===oldSub?{...tx,subcategory:clean,subcategory2:detail||tx.subcategory2}:tx
+    ));
+    if(onReorganiseSub)onReorganiseSub(oldSub,clean,detail);
+  },[onReorganiseSub]);
+
   const bulkAssignPriority=useCallback((subcategory,priority)=>{
     setAllTxs(prev=>prev.map(tx=>tx.subcategory===subcategory?{...tx,priority}:tx));
     if(onSubPriorityAssign)onSubPriorityAssign(subcategory,priority);
@@ -929,7 +1033,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   },[]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
-  const isFiltered=searchQuery||catFilter!=="all"||subFilter.length||sourceFilter.length||recurringFilter!=="all"||priorityFilter!=="all"||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
+  const isFiltered=searchQuery||catFilter!=="all"||subFilter.length||sub2Filter.length||sourceFilter.length||recurringFilter!=="all"||priorityFilter!=="all"||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
 
   const MonthLabel=({m})=>{const[yr,mo]=m.split("-");const ms=["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return ms[parseInt(mo)]+" "+yr.slice(2);};
 
@@ -972,7 +1076,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
           h("input",{type:"date",className:"mono",
             style:{fontSize:12,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",background:"transparent",cursor:"pointer"},
             min:allDates.min,max:allDates.max,value:dateTo,onChange:e=>setDateTo(e.target.value)}),
-          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allDates.min);setDateTo(allDates.max);setCatFilter("all");setSubFilter([]);setSourceFilter([]);setRecurringFilter("all");setPriorityFilter("all");setSearchQuery("");}},"Clear filters")
+          isFiltered&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setDateFrom(allDates.min);setDateTo(allDates.max);setCatFilter("all");setSubFilter([]);setSub2Filter([]);setSourceFilter([]);setRecurringFilter("all");setPriorityFilter("all");setSearchQuery("");}},"Clear filters")
         ),
         // Row 0: search
         h("div",{style:{display:"flex",alignItems:"center",gap:8}},
@@ -1003,6 +1107,13 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
             className:"sub-btn"+(subFilter.includes(s)?" active":""),
             onClick:()=>toggleSub(s)},s))
         ),
+        // Row 4b: detail (sub2) — only shown when a primary with detail options is active
+        availableSub2Opts.length>0&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
+          h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"›"),
+          availableSub2Opts.map(s=>h("button",{key:s,
+            className:"sub-btn"+(sub2Filter.includes(s)?" active":""),
+            onClick:()=>setSub2Filter(prev=>prev.includes(s)?prev.filter(x=>x!==s):[...prev,s])},s))
+        ),
         // Row 5: priority
         hasAnyPriority&&h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
           h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Pri"),
@@ -1021,6 +1132,9 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
 
       // ── Category priorities ──
       subPriorityMap.length>0&&h(CategoryPriorities,{subPriorityMap,onAssign:bulkAssignPriority}),
+
+      // ── Reorganise categories ──
+      allSubs.length>0&&h(ReorganiseCategories,{allSubs,sub2Config,onReorganise:bulkReorganiseSub}),
 
       // Stats
       h("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",fontSize:12,color:"var(--color-text-secondary,#666)"}},
