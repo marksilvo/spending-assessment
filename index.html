@@ -198,6 +198,14 @@ function App(){
     setSubs(prev=>[...prev,clean]);
   },[subs]);
 
+  const[showManual,setShowManual]=useState(false);
+  const addManualTx=useCallback((tx)=>{
+    const predicted=applyPredictions([tx],rules);
+    setTxs(prev=>[...prev,...predicted].sort((a,b)=>a.date.localeCompare(b.date)));
+    setView("review");
+    setShowManual(false);
+  },[rules]);
+
   const addSub2Option=useCallback((subcategory,option)=>{
     const clean=option.trim().toLowerCase();
     if(!clean)return;
@@ -414,12 +422,17 @@ function App(){
     error&&h("div",{className:"err"},error,h("button",{onClick:()=>setError(null),style:{float:"right",background:"none",border:"none",color:"inherit",cursor:"pointer",fontWeight:600}},"×")),
 
     // Upload
-    view==="upload"&&h("div",{className:"drop-zone",onClick:()=>!loading&&fileRef.current?.click(),
-      onDragOver:e=>{e.preventDefault();e.currentTarget.classList.add("over");},onDragLeave:e=>{e.currentTarget.classList.remove("over");},
-      onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove("over");handleFiles(Array.from(e.dataTransfer.files));}},
-      loading?h("div",{className:"mono",style:{fontSize:14,color:"var(--color-text-secondary,#666)"}},"Parsing...")
-        :h(React.Fragment,null,h("div",{style:{color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},h(UploadIcon)),h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},"Drop statement files"),h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},"XLS and CSV supported — drop multiple at once")),
-      h("input",{ref:fileRef,type:"file",accept:".csv,.xls,.xlsx",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}})
+    view==="upload"&&h(React.Fragment,null,
+      h("div",{className:"drop-zone",onClick:()=>!loading&&fileRef.current?.click(),
+        onDragOver:e=>{e.preventDefault();e.currentTarget.classList.add("over");},onDragLeave:e=>{e.currentTarget.classList.remove("over");},
+        onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove("over");handleFiles(Array.from(e.dataTransfer.files));}},
+        loading?h("div",{className:"mono",style:{fontSize:14,color:"var(--color-text-secondary,#666)"}},"Parsing...")
+          :h(React.Fragment,null,h("div",{style:{color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},h(UploadIcon)),h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},"Drop statement files"),h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},"XLS and CSV supported — drop multiple at once")),
+        h("input",{ref:fileRef,type:"file",accept:".csv,.xls,.xlsx",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}})
+      ),
+      !showManual&&h("div",{style:{textAlign:"center",marginTop:12}},
+        h("button",{className:"pill",style:{fontSize:12},onClick:()=>setShowManual(true)},"+ Add manually")),
+      showManual&&h(ManualTxForm,{onAdd:addManualTx,onCancel:()=>setShowManual(false),existingSources:[]})
     ),
 
     // Review
@@ -433,8 +446,10 @@ function App(){
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
           predictedCount>0&&h("button",{className:"pill pill-confirm",onClick:confirmAll},"Confirm all predictions"),
           h("label",{className:"pill",style:{cursor:"pointer"}},"+\u00a0Add files",h("input",{ref:addRef,type:"file",accept:".csv,.xls,.xlsx",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}})),
+          h("button",{className:"pill",onClick:()=>setShowManual(o=>!o)},showManual?"Cancel":"+ Add manually"),
           allDone&&h("button",{className:"pill pill-primary",onClick:()=>setView("summary")},"View summary"))
       ),
+      showManual&&h(ManualTxForm,{onAdd:addManualTx,onCancel:()=>setShowManual(false),existingSources:sources}),
 
       uncatCount>0&&h("div",{style:{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}},
         h("button",{className:"pill",style:{borderColor:"var(--color-border-info,#85b7eb)"},onClick:()=>{
@@ -453,6 +468,41 @@ function App(){
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
     view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,onSub2PriorityAssign:assignPriorityBySub2,onSub2Rule:updateSub2Rule,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub})
+  );
+}
+
+// ── Manual Transaction Form ──
+const KNOWN_SOURCES=["amex","santander","cash"];
+function ManualTxForm({onAdd,onCancel,existingSources}){
+  const allSources=[...new Set([...KNOWN_SOURCES,...(existingSources||[])])];
+  const today=new Date().toISOString().slice(0,10);
+  const[date,setDate]=useState(today);
+  const[desc,setDesc]=useState("");
+  const[amount,setAmount]=useState("");
+  const[source,setSource]=useState(allSources[0]||"cash");
+  const[err,setErr]=useState("");
+  const submit=()=>{
+    if(!desc.trim()){setErr("Description required");return;}
+    const amt=parseFloat(amount);
+    if(isNaN(amt)||amt===0){setErr("Enter a valid amount");return;}
+    onAdd({id:crypto.randomUUID(),date,description:desc.trim(),amount:amt,source,category:null,subcategory:null,subcategory2:null,confirmed:false,splitFrom:null,recurring:false,recurringFrequency:null,recurringCustom:null,notes:null,priority:null});
+  };
+  return h("div",{className:"card",style:{marginTop:16,display:"flex",flexDirection:"column",gap:10}},
+    h("span",{style:{fontSize:13,fontWeight:500}},"Add transaction manually"),
+    h("div",{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}},
+      h("input",{type:"date",value:date,onChange:e=>setDate(e.target.value),style:{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent"}}),
+      h("input",{type:"text",placeholder:"Description",value:desc,onChange:e=>setDesc(e.target.value),onKeyDown:e=>{if(e.key==="Enter")submit();if(e.key==="Escape")onCancel();},autoFocus:true,
+        style:{flex:1,minWidth:160,fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent"}}),
+      h("input",{type:"number",placeholder:"Amount",value:amount,onChange:e=>setAmount(e.target.value),onKeyDown:e=>{if(e.key==="Enter")submit();},step:"0.01",
+        style:{width:90,fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent",textAlign:"right"}}),
+      h("select",{value:source,onChange:e=>setSource(e.target.value),
+        style:{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--color-border-tertiary,#ddd)",fontFamily:"'DM Mono',monospace",background:"transparent",textTransform:"capitalize"}},
+        allSources.map(s=>h("option",{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+      ),
+      h("button",{className:"pill pill-primary",style:{padding:"5px 14px"},onClick:submit},"Add"),
+      h("button",{className:"pill",style:{padding:"5px 14px"},onClick:onCancel},"Cancel")
+    ),
+    err&&h("span",{style:{fontSize:11,color:"var(--color-text-danger,#a32d2d)"}},"⚠ "+err)
   );
 }
 
