@@ -1458,10 +1458,7 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
           h("div",{className:"summary-row"},
             selectMode&&h("button",{style:{flexShrink:0,width:20,height:20,borderRadius:4,border:"1px solid "+(isSelected?"#dc2626":"var(--color-border-tertiary,#ddd)"),background:isSelected?"#dc2626":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",padding:0,marginRight:2},onClick:()=>toggleSelect(txKey)},isSelected?"✓":""),
             h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:80,flexShrink:0}},fmtDate(tx.date)),
-            h("span",{style:{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},tx.description),
-            tx.notes&&editingNotesId!==txKey&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0,fontStyle:"italic",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},title:tx.notes},"✎ "+tx.notes),
-            tx.subcategory&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0}},tx.subcategory),
-            tx.subcategory2&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0}},"› "+tx.subcategory2),
+            h("span",{style:{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500,color:"var(--color-text-primary,#1a1a1a)"}},tx.description),
             h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:tx.amount<0?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount)),
             onCat&&h("button",{className:"cat-btn"+(tx.category==="joint"?" active-j":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>{onCat(txKey,"joint");setSubPickerId(txKey);}},tx.category==="joint"&&h(CheckIcon)," J"),
             onCat&&h("button",{className:"cat-btn"+(tx.category==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>{onCat(txKey,"personal");setSubPickerId(txKey);}},tx.category==="personal"&&h(CheckIcon)," P"),
@@ -1474,7 +1471,7 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
               if(editingNotesId===txKey){setEditingNotesId(null);}
               else{setEditingNotesId(txKey);setDraftNote(tx.notes||"");}
             },title:"Add note"},"✎"),
-            onSub2&&tx.subcategory&&h("button",{className:"sub-btn"+(tx.subcategory2?" active":""),style:{marginLeft:2,fontSize:10,padding:"2px 6px"},onClick:()=>{setSub2PickerId(sub2PickerId===txKey?null:txKey);setAddingSub2TrendsId(null);}},tx.subcategory2?"› "+tx.subcategory2:"› detail"),
+            onSub2&&tx.subcategory&&h("button",{className:"sub-btn"+(tx.subcategory2?" active":""),style:{marginLeft:2,fontSize:10,padding:"2px 6px"},onClick:()=>{setSub2PickerId(sub2PickerId===txKey?null:txKey);setAddingSub2TrendsId(null);}},tx.subcategory+(tx.subcategory2?" › "+tx.subcategory2:"")),
             onDelete&&h("button",{className:"cat-btn",style:{marginLeft:4,fontSize:11,padding:"2px 7px",color:confirmDelId===txKey?"#dc2626":"var(--color-text-tertiary,#999)",borderColor:confirmDelId===txKey?"#fca5a5":"var(--color-border-tertiary,#ddd)",background:confirmDelId===txKey?"#fef2f2":"transparent"},
               onClick:()=>{if(confirmDelId===txKey){onDelete(txKey);setConfirmDelId(null);}else setConfirmDelId(txKey);},
               title:"Remove transaction"},confirmDelId===txKey?"sure?":"×")
