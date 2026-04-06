@@ -852,10 +852,18 @@ function Chart({data,width,height}){
 }
 
 const MASTER_FILE="spending-master.json";
+const DELETED_FILE="spending-deleted.json";
 const LS_KEY="st-trends";
 
 function saveTrendsLS(txs){try{localStorage.setItem(LS_KEY,JSON.stringify(txs));}catch{}}
 function loadTrendsLS(){try{const s=localStorage.getItem(LS_KEY);return s?JSON.parse(s):[];}catch{return[];}}
+
+async function readDeletedFromDir(dirHandle){
+  try{const fh=await dirHandle.getFileHandle(DELETED_FILE);const file=await fh.getFile();const text=await file.text();return new Set(JSON.parse(text));}catch{return new Set();}
+}
+async function writeDeletedToDir(dirHandle,deletedKeys){
+  try{const fh=await dirHandle.getFileHandle(DELETED_FILE,{create:true});const w=await fh.createWritable();await w.write(JSON.stringify([...deletedKeys]));await w.close();}catch{}
+}
 
 async function writeMasterToDir(dirHandle,txs){
   const fh=await dirHandle.getFileHandle(MASTER_FILE,{create:true});
@@ -926,6 +934,7 @@ function CategoryPriorities({subPriorityMap,onAssign,onAssign2}){
 
 function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,onSub2PriorityAssign,onSub2Rule,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub,onDelete}){
   const[allTxs,setAllTxs]=useState([]);
+  const[deletedKeys,setDeletedKeys]=useState(new Set());
   const[files,setFiles]=useState([]);
   const[loading,setLoading]=useState(false);
   const[status,setStatus]=useState(null);
@@ -951,13 +960,16 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       setAppDirHandle(dh);setLoading(true);setStatus("Reading folder...");
       // Auto-load rules from folder
       if(onDirConnected)await onDirConnected(dh);
-      // Load master first, then CSVs, merge and dedup
+      // Load deleted keys, master, and CSVs — filter deleted before merging
+      const deleted=await readDeletedFromDir(dh);
+      setDeletedKeys(deleted);
+      const txKey=tx=>(tx.id||tx.date+tx.description+tx.amount);
       const master=await readMasterFromDir(dh);
       const{txs:csvTxs,names}=await readCsvsFromDir(dh);
-      const merged=dedup([...allTxs,...master,...csvTxs]);
+      const merged=dedup([...allTxs,...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
       setAllTxs(merged);
       setFiles(names);
-      // Auto-save updated master back
+      // Auto-save updated master back (without deleted transactions)
       await writeMasterToDir(dh,merged);
       const uncatFiles=names.filter(n=>!n.hasCats).map(n=>n.name);
       const warn=uncatFiles.length?" ⚠ "+uncatFiles.join(", ")+" has no categories — use the exported spending CSV, not the raw bank statement.":"";
@@ -972,9 +984,12 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const resync=useCallback(async()=>{
     if(!appDirHandle)return;
     setLoading(true);setStatus("Syncing...");
+    const deleted=await readDeletedFromDir(appDirHandle);
+    setDeletedKeys(deleted);
+    const txKey=tx=>(tx.id||tx.date+tx.description+tx.amount);
     const master=await readMasterFromDir(appDirHandle);
     const{txs:csvTxs,names}=await readCsvsFromDir(appDirHandle);
-    const merged=dedup([...allTxs,...master,...csvTxs]);
+    const merged=dedup([...allTxs,...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
     setAllTxs(merged);
     setFiles(names);
     await writeMasterToDir(appDirHandle,merged);
@@ -1183,7 +1198,13 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
 
   const deleteTxTrends=useCallback((txKey)=>{
     setAllTxs(prev=>prev.filter(tx=>(tx.id||tx.date+tx.description+tx.amount)!==txKey));
-  },[]);
+    setDeletedKeys(prev=>{
+      const next=new Set(prev);
+      next.add(txKey);
+      if(appDirHandle)writeDeletedToDir(appDirHandle,next);
+      return next;
+    });
+  },[appDirHandle]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
   const isFiltered=searchQuery||catFilter!=="all"||subFilter.length||sub2Filter.length||sourceFilter.length||recurringFilter!=="all"||priorityFilter!=="all"||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
