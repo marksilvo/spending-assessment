@@ -1353,7 +1353,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
 }
 
 function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAddSub,sub2Config,onSub2,onAddSub2Option,onDelete}){
-  const[open,setOpen]=useState(false);
+  const[open,setOpen]=useState(true);
   const[editingId,setEditingId]=useState(null);
   const[confirmDelId,setConfirmDelId]=useState(null);
   const[editFreq,setEditFreq]=useState(null);
