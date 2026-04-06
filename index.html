@@ -217,13 +217,22 @@ function App(){
     }));
   },[]);
 
-  const handleFile=useCallback(async(file)=>{
-    if(!file)return;setLoading(true);setError(null);
+  const handleFiles=useCallback(async(files)=>{
+    if(!files||!files.length)return;setLoading(true);setError(null);
     try{
-      const{source,transactions:parsed}=await parseFile(file);
-      if(!parsed.length)throw new Error("No transactions found in "+file.name);
-      const predicted=applyPredictions(parsed,rules);
-      setTxs(prev=>{const other=prev.filter(t=>t.source!==source);return[...other,...predicted].sort((a,b)=>a.date.localeCompare(b.date));});
+      let merged=[];
+      for(const file of files){
+        const{transactions:parsed}=await parseFile(file);
+        if(parsed.length)merged=[...merged,...parsed];
+      }
+      if(!merged.length)throw new Error("No transactions found in the selected files.");
+      const deduped=[...new Map(merged.map(t=>[`${t.date}|${t.description}|${t.amount}|${t.source}`,t])).values()];
+      const predicted=applyPredictions(deduped,rules);
+      setTxs(prev=>{
+        const newSources=new Set(predicted.map(t=>t.source));
+        const other=prev.filter(t=>!newSources.has(t.source));
+        return[...other,...predicted].sort((a,b)=>a.date.localeCompare(b.date));
+      });
       setView("review");
     }catch(e){setError(e.message);}
     finally{setLoading(false);if(fileRef.current)fileRef.current.value="";if(addRef.current)addRef.current.value="";}
@@ -407,10 +416,10 @@ function App(){
     // Upload
     view==="upload"&&h("div",{className:"drop-zone",onClick:()=>!loading&&fileRef.current?.click(),
       onDragOver:e=>{e.preventDefault();e.currentTarget.classList.add("over");},onDragLeave:e=>{e.currentTarget.classList.remove("over");},
-      onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove("over");handleFile(e.dataTransfer.files?.[0]);}},
+      onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove("over");handleFiles(Array.from(e.dataTransfer.files));}},
       loading?h("div",{className:"mono",style:{fontSize:14,color:"var(--color-text-secondary,#666)"}},"Parsing...")
-        :h(React.Fragment,null,h("div",{style:{color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},h(UploadIcon)),h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},"Drop a statement file"),h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},"Amex CSV or Santander XLS")),
-      h("input",{ref:fileRef,type:"file",accept:".csv,.xls",onChange:e=>handleFile(e.target.files?.[0]),style:{display:"none"}})
+        :h(React.Fragment,null,h("div",{style:{color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},h(UploadIcon)),h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},"Drop statement files"),h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},"XLS and CSV supported — drop multiple at once")),
+      h("input",{ref:fileRef,type:"file",accept:".csv,.xls,.xlsx",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}})
     ),
 
     // Review
@@ -423,7 +432,7 @@ function App(){
         ),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
           predictedCount>0&&h("button",{className:"pill pill-confirm",onClick:confirmAll},"Confirm all predictions"),
-          h("label",{className:"pill",style:{cursor:"pointer"}},"+\u00a0Add card",h("input",{ref:addRef,type:"file",accept:".csv,.xls",onChange:e=>handleFile(e.target.files?.[0]),style:{display:"none"}})),
+          h("label",{className:"pill",style:{cursor:"pointer"}},"+\u00a0Add files",h("input",{ref:addRef,type:"file",accept:".csv,.xls,.xlsx",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}})),
           allDone&&h("button",{className:"pill pill-primary",onClick:()=>setView("summary")},"View summary"))
       ),
 
