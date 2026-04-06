@@ -202,6 +202,8 @@ function App(){
 
   const[showManual,setShowManual]=useState(false);
   const[showUnassignedOnly,setShowUnassignedOnly]=useState(false);
+  const deleteTx=useCallback((id)=>{setTxs(prev=>prev.filter(t=>t.id!==id));},[]);
+
   const addManualTx=useCallback((tx)=>{
     const predicted=applyPredictions([tx],rules);
     setTxs(prev=>[...prev,...predicted].sort((a,b)=>a.date.localeCompare(b.date)));
@@ -465,14 +467,14 @@ function App(){
         }},"All uncategorised → Personal")
       ),
 
-      h("div",{style:{display:"flex",flexDirection:"column",gap:1}},(showUnassignedOnly?txs.filter(t=>!t.category):txs).map(tx=>h(TxRow,{key:tx.id,tx,onCat:categorise,onSub:setSub,onConfirm:confirm,onSplit:splitTx,onRecurring:setRecurring,onNotes:setNotes,onPriority:setPriority,subs,addSub,sub2Config,onSub2:setSub2,addSub2Option,subPriorityDefaults}))),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:1}},(showUnassignedOnly?txs.filter(t=>!t.category):txs).map(tx=>h(TxRow,{key:tx.id,tx,onCat:categorise,onSub:setSub,onConfirm:confirm,onSplit:splitTx,onRecurring:setRecurring,onNotes:setNotes,onPriority:setPriority,subs,addSub,sub2Config,onSub2:setSub2,addSub2Option,subPriorityDefaults,onDelete:deleteTx}))),
 
       allDone&&h("div",{style:{textAlign:"center",marginTop:24}},h("button",{className:"pill pill-primary",style:{padding:"10px 24px",fontSize:14},onClick:()=>setView("summary")},"View summary →"))
     ),
 
     view==="summary"&&h(Summary,{txs,onBack:()=>setView("review"),onReset:reset}),
 
-    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,onSub2PriorityAssign:assignPriorityBySub2,onSub2Rule:updateSub2Rule,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub})
+    view==="trends"&&h(Trends,{onBack:()=>setView("upload"),appDirHandle,setAppDirHandle,onDirConnected:loadRulesFromDir,onSubPriorityAssign:assignPriorityBySubcategory,onSub2PriorityAssign:assignPriorityBySub2,onSub2Rule:updateSub2Rule,sub2Config,onAddSub2Option:addSub2Option,onAddSub:addSub,onReorganiseSub:reorganiseSub,onDelete:deleteTx})
   );
 }
 
@@ -516,9 +518,10 @@ const PRIORITIES=["essential","lifestyle","luxury","na"];
 function priorityLabel(p){if(!p)return null;if(p==="na")return"NA";return p.charAt(0).toUpperCase()+p.slice(1);}
 function PriorityBadge({priority}){if(!priority)return null;return h("span",{className:"badge-"+priority},priorityLabel(priority));}
 
-function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,subs,addSub,sub2Config,onSub2,addSub2Option,subPriorityDefaults}){
+function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,subs,addSub,sub2Config,onSub2,addSub2Option,subPriorityDefaults,onDelete}){
   const[showSubs,setShowSubs]=useState(!tx.confirmed);
   const[showSplit,setShowSplit]=useState(false);
+  const[confirmDel,setConfirmDel]=useState(false);
   const[splitAmt,setSplitAmt]=useState("");
   const[addingNew,setAddingNew]=useState(false);
   const[newSub,setNewSub]=useState("");
@@ -572,7 +575,11 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
           if(!next)onRecurring(tx.id,false,null,null);
           else onRecurring(tx.id,true,tx.recurringFrequency||"monthly",null);
         },title:"Recurring transaction"},"↻"),
-        h("button",{className:"notes-toggle"+(tx.notes?" active":""),onClick:()=>setShowNotes(s=>!s),title:"Add note"},"✎")
+        h("button",{className:"notes-toggle"+(tx.notes?" active":""),onClick:()=>setShowNotes(s=>!s),title:"Add note"},"✎"),
+        onDelete&&h("button",{className:"cat-btn",style:{fontSize:11,padding:"3px 7px",color:confirmDel?"#dc2626":"var(--color-text-tertiary,#999)",borderColor:confirmDel?"#fca5a5":"var(--color-border-tertiary,#ddd)",background:confirmDel?"#fef2f2":"transparent"},
+          onClick:()=>{if(confirmDel)onDelete(tx.id);else setConfirmDel(true);},
+          onBlur:()=>setTimeout(()=>setConfirmDel(false),150),
+          title:"Remove transaction"},confirmDel?"sure?":"×")
       )
     ),
     showFreq&&tx.recurring&&h("div",{className:"freq-picker"},
@@ -913,7 +920,7 @@ function CategoryPriorities({subPriorityMap,onAssign,onAssign2}){
 }
 
 
-function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,onSub2PriorityAssign,onSub2Rule,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub}){
+function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorityAssign,onSub2PriorityAssign,onSub2Rule,sub2Config,onAddSub2Option,onAddSub,onReorganiseSub,onDelete}){
   const[allTxs,setAllTxs]=useState([]);
   const[files,setFiles]=useState([]);
   const[loading,setLoading]=useState(false);
@@ -1170,6 +1177,11 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     }));
   },[]);
 
+  const deleteTxTrends=useCallback((id)=>{
+    setAllTxs(prev=>prev.filter(tx=>tx.id!==id));
+    if(onDelete)onDelete(id);
+  },[onDelete]);
+
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
   const isFiltered=searchQuery||catFilter!=="all"||subFilter.length||sub2Filter.length||sourceFilter.length||recurringFilter!=="all"||priorityFilter!=="all"||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
 
@@ -1331,14 +1343,15 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
         h(SubBreak,{groups:subBreakP})),
 
       // Expandable transactions
-      h(TrendsTxList,{txs:filteredTxs,onRecurring:setTrendsRecurring,onNotes:setTrendsNotes,onPriority:setTrendsPriority,onCat:setTrendsCat,onSub:setTrendsSub,subs:allSubs,onAddSub,sub2Config,onSub2:setTrendsSub2,onAddSub2Option})
+      h(TrendsTxList,{txs:filteredTxs,onRecurring:setTrendsRecurring,onNotes:setTrendsNotes,onPriority:setTrendsPriority,onCat:setTrendsCat,onSub:setTrendsSub,subs:allSubs,onAddSub,sub2Config,onSub2:setTrendsSub2,onAddSub2Option,onDelete:deleteTxTrends})
     )
   );
 }
 
-function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAddSub,sub2Config,onSub2,onAddSub2Option}){
+function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAddSub,sub2Config,onSub2,onAddSub2Option,onDelete}){
   const[open,setOpen]=useState(false);
   const[editingId,setEditingId]=useState(null);
+  const[confirmDelId,setConfirmDelId]=useState(null);
   const[editFreq,setEditFreq]=useState(null);
   const[editCustom,setEditCustom]=useState("");
   const[editingNotesId,setEditingNotesId]=useState(null);
@@ -1388,7 +1401,11 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
               if(editingNotesId===txKey){setEditingNotesId(null);}
               else{setEditingNotesId(txKey);setDraftNote(tx.notes||"");}
             },title:"Add note"},"✎"),
-            onSub2&&tx.subcategory&&h("button",{className:"sub-btn"+(tx.subcategory2?" active":""),style:{marginLeft:2,fontSize:10,padding:"2px 6px"},onClick:()=>{setSub2PickerId(sub2PickerId===txKey?null:txKey);setAddingSub2TrendsId(null);}},tx.subcategory2?"› "+tx.subcategory2:"› detail")
+            onSub2&&tx.subcategory&&h("button",{className:"sub-btn"+(tx.subcategory2?" active":""),style:{marginLeft:2,fontSize:10,padding:"2px 6px"},onClick:()=>{setSub2PickerId(sub2PickerId===txKey?null:txKey);setAddingSub2TrendsId(null);}},tx.subcategory2?"› "+tx.subcategory2:"› detail"),
+            onDelete&&h("button",{className:"cat-btn",style:{marginLeft:4,fontSize:11,padding:"2px 7px",color:confirmDelId===txKey?"#dc2626":"var(--color-text-tertiary,#999)",borderColor:confirmDelId===txKey?"#fca5a5":"var(--color-border-tertiary,#ddd)",background:confirmDelId===txKey?"#fef2f2":"transparent"},
+              onClick:()=>{if(confirmDelId===txKey){onDelete(tx.id);setConfirmDelId(null);}else setConfirmDelId(txKey);},
+              onBlur:()=>setTimeout(()=>setConfirmDelId(c=>c===txKey?null:c),150),
+              title:"Remove transaction"},confirmDelId===txKey?"sure?":"×")
           ),
           subPickerId===txKey&&onSub&&h("div",{className:"sub-picker",style:{paddingLeft:0,paddingTop:4}},
             subs&&subs.map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory===s?" active":""),onClick:()=>{onSub(txKey,s);setSubPickerId(null);setAddingNewSub(false);setNewSubValue("");}},s)),
