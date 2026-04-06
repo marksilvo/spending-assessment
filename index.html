@@ -202,6 +202,7 @@ function App(){
 
   const[showManual,setShowManual]=useState(false);
   const[showUnassignedOnly,setShowUnassignedOnly]=useState(false);
+  const[confirmBulkDelReview,setConfirmBulkDelReview]=useState(false);
   const deleteTx=useCallback((id)=>{setTxs(prev=>prev.filter(t=>t.id!==id));},[]);
 
   const addManualTx=useCallback((tx)=>{
@@ -458,13 +459,18 @@ function App(){
       ),
       showManual&&h(ManualTxForm,{onAdd:addManualTx,onCancel:()=>setShowManual(false),existingSources:sources}),
 
-      uncatCount>0&&h("div",{style:{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}},
+      uncatCount>0&&h("div",{style:{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}},
         h("button",{className:"pill",style:{borderColor:"var(--color-border-info,#85b7eb)"},onClick:()=>{
           setTxs(prev=>prev.map(tx=>{if(tx.category)return tx;const k=normMerchant(tx.description);if(k)setRules(r=>({...r,[k]:{category:"joint",subcategory:null}}));return{...tx,category:"joint",confirmed:true};}));
         }},"All uncategorised → Joint"),
         h("button",{className:"pill",style:{borderColor:"var(--color-border-warning,#ef9f27)"},onClick:()=>{
           setTxs(prev=>prev.map(tx=>{if(tx.category)return tx;const k=normMerchant(tx.description);if(k)setRules(r=>({...r,[k]:{category:"personal",subcategory:null}}));return{...tx,category:"personal",confirmed:true};}));
-        }},"All uncategorised → Personal")
+        }},"All uncategorised → Personal"),
+        !confirmBulkDelReview&&h("button",{className:"pill",style:{borderColor:"#fca5a5",color:"#dc2626"},onClick:()=>setConfirmBulkDelReview(true)},"Delete all unassigned"),
+        confirmBulkDelReview&&h(React.Fragment,null,
+          h("span",{style:{fontSize:12,color:"#dc2626"}},"Delete "+uncatCount+"?"),
+          h("button",{className:"pill",style:{background:"#dc2626",color:"#fff",borderColor:"#dc2626"},onClick:()=>{setTxs(prev=>prev.filter(t=>t.category));setConfirmBulkDelReview(false);}},"\u2713 Confirm"),
+          h("button",{className:"pill",onClick:()=>setConfirmBulkDelReview(false)},"Cancel"))
       ),
 
       h("div",{style:{display:"flex",flexDirection:"column",gap:1}},(showUnassignedOnly?txs.filter(t=>!t.category):txs).map(tx=>h(TxRow,{key:tx.id,tx,onCat:categorise,onSub:setSub,onConfirm:confirm,onSplit:splitTx,onRecurring:setRecurring,onNotes:setNotes,onPriority:setPriority,subs,addSub,sub2Config,onSub2:setSub2,addSub2Option,subPriorityDefaults,onDelete:deleteTx}))),
@@ -1179,8 +1185,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
 
   const deleteTxTrends=useCallback((id)=>{
     setAllTxs(prev=>prev.filter(tx=>tx.id!==id));
-    if(onDelete)onDelete(id);
-  },[onDelete]);
+  },[]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
   const isFiltered=searchQuery||catFilter!=="all"||subFilter.length||sub2Filter.length||sourceFilter.length||recurringFilter!=="all"||priorityFilter!=="all"||(allDates.min&&(dateFrom!==allDates.min||dateTo!==allDates.max));
@@ -1363,7 +1368,16 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
   const[sub2PickerId,setSub2PickerId]=useState(null);
   const[addingSub2TrendsId,setAddingSub2TrendsId]=useState(null);
   const[newSub2Trends,setNewSub2Trends]=useState("");
+  const[selectMode,setSelectMode]=useState(false);
+  const[selected,setSelected]=useState(new Set());
+  const[confirmBulkDel,setConfirmBulkDel]=useState(false);
   const sorted=React.useMemo(()=>[...txs].sort((a,b)=>b.date.localeCompare(a.date)),[txs]);
+
+  const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  const selectAll=()=>setSelected(new Set(sorted.map(tx=>tx.id||tx.date+tx.description+tx.amount)));
+  const clearSelect=()=>{setSelected(new Set());setConfirmBulkDel(false);};
+  const exitSelectMode=()=>{setSelectMode(false);clearSelect();};
+  const bulkDelete=()=>{if(onDelete)selected.forEach(id=>onDelete(id));exitSelectMode();};
 
   const startEdit=(tx)=>{
     if(editingId===tx.id||tx.id===editingId){setEditingId(null);return;}
@@ -1373,17 +1387,33 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
   };
 
   return h("div",{style:{marginTop:24}},
-    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
+    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}},
       h("h3",{style:{fontSize:14,fontWeight:500}},"Transactions"),
-      h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>setOpen(o=>!o)},
-        open?"Hide ▲":"Show "+sorted.length+" ▼")
+      h("div",{style:{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}},
+        open&&onDelete&&!selectMode&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setSelectMode(true);setSelected(new Set());}},"Select"),
+        open&&selectMode&&h(React.Fragment,null,
+          h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:selectAll},"All"),
+          h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:clearSelect},"None"),
+          selected.size>0&&!confirmBulkDel&&h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px",borderColor:"#fca5a5",color:"#dc2626"},onClick:()=>setConfirmBulkDel(true)},"Delete "+selected.size),
+          selected.size>0&&confirmBulkDel&&h(React.Fragment,null,
+            h("span",{style:{fontSize:11,color:"#dc2626"}},"Delete "+selected.size+"?"),
+            h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px",background:"#dc2626",color:"#fff",borderColor:"#dc2626"},onClick:bulkDelete},"Confirm"),
+            h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>setConfirmBulkDel(false)},"Cancel")
+          ),
+          h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:exitSelectMode},"Done")
+        ),
+        h("button",{className:"pill",style:{fontSize:11,padding:"3px 10px"},onClick:()=>{setOpen(o=>!o);if(open)exitSelectMode();}},
+          open?"Hide ▲":"Show "+sorted.length+" ▼")
+      )
     ),
     open&&h("div",null,
       sorted.map(tx=>{
         const txKey=tx.id||tx.date+tx.description+tx.amount;
         const isEditing=editingId===txKey;
-        return h("div",{key:txKey},
+        const isSelected=selected.has(txKey);
+        return h("div",{key:txKey,style:isSelected?{background:"#fef2f2",borderRadius:6}:undefined},
           h("div",{className:"summary-row"},
+            selectMode&&h("button",{style:{flexShrink:0,width:20,height:20,borderRadius:4,border:"1px solid "+(isSelected?"#dc2626":"var(--color-border-tertiary,#ddd)"),background:isSelected?"#dc2626":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",padding:0,marginRight:2},onClick:()=>toggleSelect(txKey)},isSelected?"✓":""),
             h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:80,flexShrink:0}},fmtDate(tx.date)),
             h("span",{style:{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},tx.description),
             tx.notes&&editingNotesId!==txKey&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0,fontStyle:"italic",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},title:tx.notes},"✎ "+tx.notes),
