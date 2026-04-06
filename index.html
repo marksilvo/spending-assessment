@@ -584,7 +584,6 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
         h("button",{className:"notes-toggle"+(tx.notes?" active":""),onClick:()=>setShowNotes(s=>!s),title:"Add note"},"✎"),
         onDelete&&h("button",{className:"cat-btn",style:{fontSize:11,padding:"3px 7px",color:confirmDel?"#dc2626":"var(--color-text-tertiary,#999)",borderColor:confirmDel?"#fca5a5":"var(--color-border-tertiary,#ddd)",background:confirmDel?"#fef2f2":"transparent"},
           onClick:()=>{if(confirmDel)onDelete(tx.id);else setConfirmDel(true);},
-          onBlur:()=>setTimeout(()=>setConfirmDel(false),150),
           title:"Remove transaction"},confirmDel?"sure?":"×")
       )
     ),
@@ -1183,8 +1182,8 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     }));
   },[]);
 
-  const deleteTxTrends=useCallback((id)=>{
-    setAllTxs(prev=>prev.filter(tx=>tx.id!==id));
+  const deleteTxTrends=useCallback((txKey)=>{
+    setAllTxs(prev=>prev.filter(tx=>(tx.id||tx.date+tx.description+tx.amount)!==txKey));
   },[]);
 
   const hasDirectoryAPI=typeof window.showDirectoryPicker==="function";
@@ -1433,8 +1432,7 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
             },title:"Add note"},"✎"),
             onSub2&&tx.subcategory&&h("button",{className:"sub-btn"+(tx.subcategory2?" active":""),style:{marginLeft:2,fontSize:10,padding:"2px 6px"},onClick:()=>{setSub2PickerId(sub2PickerId===txKey?null:txKey);setAddingSub2TrendsId(null);}},tx.subcategory2?"› "+tx.subcategory2:"› detail"),
             onDelete&&h("button",{className:"cat-btn",style:{marginLeft:4,fontSize:11,padding:"2px 7px",color:confirmDelId===txKey?"#dc2626":"var(--color-text-tertiary,#999)",borderColor:confirmDelId===txKey?"#fca5a5":"var(--color-border-tertiary,#ddd)",background:confirmDelId===txKey?"#fef2f2":"transparent"},
-              onClick:()=>{if(confirmDelId===txKey){onDelete(tx.id);setConfirmDelId(null);}else setConfirmDelId(txKey);},
-              onBlur:()=>setTimeout(()=>setConfirmDelId(c=>c===txKey?null:c),150),
+              onClick:()=>{if(confirmDelId===txKey){onDelete(txKey);setConfirmDelId(null);}else setConfirmDelId(txKey);},
               title:"Remove transaction"},confirmDelId===txKey?"sure?":"×")
           ),
           subPickerId===txKey&&onSub&&h("div",{className:"sub-picker",style:{paddingLeft:0,paddingTop:4}},
