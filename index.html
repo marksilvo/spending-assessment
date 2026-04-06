@@ -65,7 +65,7 @@ import ReactDOM from"https://esm.sh/react-dom@18.3.1/client";
 const h=React.createElement;
 
 const DEFAULT_SUBS=["groceries","commuting","eating out","coffee","clothes","gifts","expenses","lunch at work","days out with children","holidays","days out","children","home"];
-const SKIP=[/initial balance/i,/cashback awarded/i,/account fee/i,/faster payment/i,/payment received/i,/monthly credit card fee/i,/total cashback/i,/interest charged/i];
+const SKIP=[/initial balance/i,/\bcashback\b/i,/account fee/i,/faster payment/i,/payment received/i,/monthly credit card fee/i,/interest charged/i];
 
 // ── Parsers ──
 function csvLine(l){const r=[];let c="",q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c="";}else c+=ch;}r.push(c.trim());return r;}
