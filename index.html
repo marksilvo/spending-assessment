@@ -636,7 +636,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
         :h("button",{className:"sub-btn",onClick:()=>setAddingNew(true),style:{padding:"3px 8px"}},"+")
     ),
     showSubs&&tx.subcategory&&h("div",{className:"sub2-picker"},
-      (sub2Config[tx.subcategory]||[]).map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>{const newSub2=tx.subcategory2===s?null:s;onSub2(tx.id,newSub2);if(newSub2&&subPriorityDefaults){const p=subPriorityDefaults[tx.subcategory+"|"+newSub2];if(p)onPriority(tx.id,p);}}},s)),
+      [...new Set([...(sub2Config[tx.subcategory]||[]),...(tx.subcategory2?[tx.subcategory2]:[])])].map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>{const newSub2=tx.subcategory2===s?null:s;onSub2(tx.id,newSub2);if(newSub2&&subPriorityDefaults){const p=subPriorityDefaults[tx.subcategory+"|"+newSub2];if(p)onPriority(tx.id,p);}}},s)),
       addingSub2
         ?h(React.Fragment,null,
           h("input",{style:{width:90,padding:"3px 8px",borderRadius:12,border:"1px solid var(--color-border-secondary,#aaa)",fontSize:11,fontFamily:'"DM Mono",monospace'},value:newSub2,onChange:e=>setNewSub2(e.target.value),onKeyDown:e=>{if(e.key==="Enter")doAddSub2();if(e.key==="Escape"){setAddingSub2(false);setNewSub2("");}},placeholder:"new detail",autoFocus:true}),
@@ -1489,7 +1489,7 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
               :h("button",{className:"sub-btn",style:{padding:"3px 8px"},onClick:()=>setAddingNewSub(true)},"+")
           ),
           sub2PickerId===txKey&&onSub2&&tx.subcategory&&h("div",{className:"sub2-picker",style:{paddingLeft:0,paddingTop:4}},
-            (sub2Config&&sub2Config[tx.subcategory]||[]).map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>{onSub2(txKey,tx.subcategory2===s?null:s);setSub2PickerId(null);}},s)),
+            [...new Set([...(sub2Config&&sub2Config[tx.subcategory]||[]),...(tx.subcategory2?[tx.subcategory2]:[])])].map(s=>h("button",{key:s,className:"sub-btn"+(tx.subcategory2===s?" active":""),onClick:()=>{onSub2(txKey,tx.subcategory2===s?null:s);setSub2PickerId(null);}},s)),
             addingSub2TrendsId===txKey
               ?h(React.Fragment,null,
                 h("input",{style:{width:90,padding:"3px 8px",borderRadius:12,border:"1px solid var(--color-border-secondary,#aaa)",fontSize:11,fontFamily:'"DM Mono",monospace'},value:newSub2Trends,onChange:e=>setNewSub2Trends(e.target.value),onKeyDown:e=>{if(e.key==="Enter"){if(onAddSub2Option)onAddSub2Option(tx.subcategory,newSub2Trends);onSub2(txKey,newSub2Trends.trim().toLowerCase());setSub2PickerId(null);setAddingSub2TrendsId(null);setNewSub2Trends("");}if(e.key==="Escape"){setAddingSub2TrendsId(null);setNewSub2Trends("");}},placeholder:"new detail",autoFocus:true}),
