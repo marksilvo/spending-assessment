@@ -14,6 +14,8 @@ button{cursor:pointer;font-family:inherit}
 .tx-row:hover{background:var(--color-background-secondary,#f7f7f7)}
 .tx-row.done{opacity:.55}
 .tx-row.predicted{border-left:3px solid var(--color-border-success,#97c459)}
+.tx-row.unassigned{border-left:3px solid #f59e0b;background:#fffbeb}
+.tx-row.unassigned:hover{background:#fef3c7}
 .cat-btn{display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border-tertiary,#ddd);font-size:12px;font-weight:500;cursor:pointer;font-family:"DM Mono",monospace;transition:all .12s;min-width:32px;background:transparent;color:var(--color-text-tertiary,#999)}
 .cat-btn.active-j{background:var(--color-background-info,#e6f1fb);color:var(--color-text-info,#185fa5);border-color:var(--color-border-info,#85b7eb)}
 .cat-btn.active-p{background:var(--color-background-warning,#faeeda);color:var(--color-text-warning,#854f0b);border-color:var(--color-border-warning,#ef9f27)}
@@ -199,6 +201,7 @@ function App(){
   },[subs]);
 
   const[showManual,setShowManual]=useState(false);
+  const[showUnassignedOnly,setShowUnassignedOnly]=useState(false);
   const addManualTx=useCallback((tx)=>{
     const predicted=applyPredictions([tx],rules);
     setTxs(prev=>[...prev,...predicted].sort((a,b)=>a.date.localeCompare(b.date)));
@@ -242,6 +245,7 @@ function App(){
         return[...other,...predicted].sort((a,b)=>a.date.localeCompare(b.date));
       });
       setView("review");
+      setShowUnassignedOnly(false);
     }catch(e){setError(e.message);}
     finally{setLoading(false);if(fileRef.current)fileRef.current.value="";if(addRef.current)addRef.current.value="";}
   },[rules]);
@@ -444,6 +448,7 @@ function App(){
           predictedCount>0&&h("span",{style:{fontSize:12,color:"var(--color-text-success,#3b6d11)"}},"("+predictedCount+" predicted)")
         ),
         h("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+          uncatCount>0&&h("button",{className:"pill"+(showUnassignedOnly?" pill-primary":""),style:showUnassignedOnly?{}:{borderColor:"#f59e0b",color:"#92400e"},onClick:()=>setShowUnassignedOnly(o=>!o)},showUnassignedOnly?"Show all":"⚠\ufe0f "+uncatCount+" unassigned"),
           predictedCount>0&&h("button",{className:"pill pill-confirm",onClick:confirmAll},"Confirm all predictions"),
           h("label",{className:"pill",style:{cursor:"pointer"}},"+\u00a0Add files",h("input",{ref:addRef,type:"file",accept:".csv,.xls,.xlsx",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}})),
           h("button",{className:"pill",onClick:()=>setShowManual(o=>!o)},showManual?"Cancel":"+ Add manually"),
@@ -460,7 +465,7 @@ function App(){
         }},"All uncategorised → Personal")
       ),
 
-      h("div",{style:{display:"flex",flexDirection:"column",gap:1}},txs.map(tx=>h(TxRow,{key:tx.id,tx,onCat:categorise,onSub:setSub,onConfirm:confirm,onSplit:splitTx,onRecurring:setRecurring,onNotes:setNotes,onPriority:setPriority,subs,addSub,sub2Config,onSub2:setSub2,addSub2Option,subPriorityDefaults}))),
+      h("div",{style:{display:"flex",flexDirection:"column",gap:1}},(showUnassignedOnly?txs.filter(t=>!t.category):txs).map(tx=>h(TxRow,{key:tx.id,tx,onCat:categorise,onSub:setSub,onConfirm:confirm,onSplit:splitTx,onRecurring:setRecurring,onNotes:setNotes,onPriority:setPriority,subs,addSub,sub2Config,onSub2:setSub2,addSub2Option,subPriorityDefaults}))),
 
       allDone&&h("div",{style:{textAlign:"center",marginTop:24}},h("button",{className:"pill pill-primary",style:{padding:"10px 24px",fontSize:14},onClick:()=>setView("summary")},"View summary →"))
     ),
@@ -553,7 +558,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
   };
 
   return h("div",null,
-    h("div",{className:"tx-row"+(done?" done":"")+(predicted?" predicted":"")},
+    h("div",{className:"tx-row"+(done?" done":!tx.category?" unassigned":predicted?" predicted":"")},
       h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:80,flexShrink:0}},fmtDate(tx.date)),
       h("span",{style:{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},tx.description),
       h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:isRefund?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount)),
