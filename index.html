@@ -65,7 +65,7 @@ import ReactDOM from"https://esm.sh/react-dom@18.3.1/client";
 const h=React.createElement;
 
 const DEFAULT_SUBS=["groceries","commuting","eating out","coffee","clothes","gifts","expenses","lunch at work","days out with children","holidays","days out","children","home"];
-const SKIP=[/initial balance/i,/\bcashback\b/i,/account fee/i,/faster payment/i,/payment received/i,/monthly credit card fee/i,/interest charged/i];
+const SKIP=[/initial balance/i,/faster payment/i,/payment received/i,/interest charged/i];
 
 // ── Parsers ──
 function csvLine(l){const r=[];let c="",q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c="";}else c+=ch;}r.push(c.trim());return r;}
@@ -94,7 +94,7 @@ function parseSantander(text){
     const descCells=cells.filter(c=>c!==dateCell&&!moneyRe.test(c)&&!/^\*\*\s*\d+$/.test(c));
     const raw=descCells.sort((a,b)=>b.length-a.length)[0]||"";
     if(SKIP.some(s=>s.test(raw)))continue;
-    if(/payment received|cashback awarded|faster payment/i.test(raw))continue;
+    if(/payment received|faster payment/i.test(raw))continue;
     const isRefund=/refund/i.test(raw);
     let amt=0;const mc=cells.filter(c=>moneyRe.test(c));
     if(mc.length>0){const m=mc[mc.length-1].match(moneyRe);if(m)amt=parseFloat(m[1].replace(/,/g,""));}
