@@ -74,10 +74,11 @@ function parseAmex(text){
   const lines=text.split("\n").map(l=>l.trim()).filter(Boolean),txs=[];
   for(let i=1;i<lines.length;i++){
     const p=csvLine(lines[i]);if(p.length<3)continue;
-    const amt=parseFloat(p[2]);if(isNaN(amt))continue;
+    let amt=parseFloat(p[2]);if(isNaN(amt))continue;
     const desc=p[1].replace(/\s{2,}/g,"  ").trim();
     if(SKIP.some(s=>s.test(desc)))continue;
     if(/payment received/i.test(desc))continue;
+    if(/cashback/i.test(desc)&&amt>0)amt=-amt;
     const dm=p[0].match(/(\d{2})\/(\d{2})\/(\d{4})/);
     txs.push({id:crypto.randomUUID(),date:dm?`${dm[3]}-${dm[2]}-${dm[1]}`:p[0],description:desc,amount:amt,source:"amex",category:null,subcategory:null,confirmed:false,splitFrom:null,recurring:false,recurringFrequency:null,recurringCustom:null,notes:null,priority:null,subcategory2:null});
   }
@@ -95,10 +96,10 @@ function parseSantander(text){
     const raw=descCells.sort((a,b)=>b.length-a.length)[0]||"";
     if(SKIP.some(s=>s.test(raw)))continue;
     if(/payment received|faster payment/i.test(raw))continue;
-    const isRefund=/refund/i.test(raw);
+    const isCredit=/refund|cashback/i.test(raw);
     let amt=0;const mc=cells.filter(c=>moneyRe.test(c));
     if(mc.length>0){const m=mc[mc.length-1].match(moneyRe);if(m)amt=parseFloat(m[1].replace(/,/g,""));}
-    if(amt===0)continue;if(isRefund)amt=-amt;
+    if(amt===0)continue;if(isCredit)amt=-amt;
     const parts=raw.split(/\s{3,}/).map(p=>p.trim()).filter(Boolean);
     let desc=raw.replace(/\s+/g," ").trim();
     if(parts.length>=3)desc=parts[2];else if(parts.length===2)desc=parts[1]||parts[0];
