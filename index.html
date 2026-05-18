@@ -21,6 +21,8 @@ button{cursor:pointer;font-family:inherit}
 .cat-btn.active-p{background:var(--color-background-warning,#faeeda);color:var(--color-text-warning,#854f0b);border-color:var(--color-border-warning,#ef9f27)}
 .cat-btn.predicted-j{background:var(--color-background-info,#e6f1fb);color:var(--color-text-info,#185fa5);border:2px dashed var(--color-border-info,#85b7eb);opacity:.7}
 .cat-btn.predicted-p{background:var(--color-background-warning,#faeeda);color:var(--color-text-warning,#854f0b);border:2px dashed var(--color-border-warning,#ef9f27);opacity:.7}
+.cat-btn.active-i{background:#f3f4f6;color:#6b7280;border-color:#d1d5db}
+.cat-btn.predicted-i{background:#f3f4f6;color:#6b7280;border:2px dashed #d1d5db;opacity:.7}
 .sub-btn{padding:3px 8px;border-radius:12px;border:1px solid var(--color-border-tertiary,#ddd);font-size:11px;background:transparent;color:var(--color-text-tertiary,#999);font-family:"DM Mono",monospace;cursor:pointer;transition:all .12s;white-space:nowrap}
 .sub-btn:hover{border-color:var(--color-border-secondary,#aaa);color:var(--color-text-secondary,#666)}
 .sub-btn.active{background:var(--color-background-secondary,#f5f5f5);color:var(--color-text-primary,#1a1a1a);border-color:var(--color-border-primary,#888)}
@@ -494,6 +496,9 @@ function App(){
         h("button",{className:"pill",style:{borderColor:"var(--color-border-warning,#ef9f27)"},onClick:()=>{
           setTxs(prev=>prev.map(tx=>{if(tx.category)return tx;const k=normMerchant(tx.description);if(k)setRules(r=>({...r,[k]:{category:"personal",subcategory:null}}));return{...tx,category:"personal",confirmed:true};}));
         }},"All uncategorised → Personal"),
+        h("button",{className:"pill",style:{borderColor:"#d1d5db"},onClick:()=>{
+          setTxs(prev=>prev.map(tx=>{if(tx.category)return tx;const k=normMerchant(tx.description);if(k)setRules(r=>({...r,[k]:{category:"ignore",subcategory:null}}));return{...tx,category:"ignore",confirmed:true};}));
+        }},"All uncategorised → Ignore"),
         !confirmBulkDelReview&&h("button",{className:"pill",style:{borderColor:"#fca5a5",color:"#dc2626"},onClick:()=>setConfirmBulkDelReview(true)},"Delete all unassigned"),
         confirmBulkDelReview&&h(React.Fragment,null,
           h("span",{style:{fontSize:12,color:"#dc2626"}},"Delete "+uncatCount+"?"),
@@ -566,9 +571,9 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
   const[showNotes,setShowNotes]=useState(!!tx.notes);
   const[splitCat1,setSplitCat1]=useState(tx.category||"joint");
   const[splitCat2,setSplitCat2]=useState(tx.category==="personal"?"joint":"personal");
-  const isJ=tx.category==="joint",isP=tx.category==="personal";
+  const isJ=tx.category==="joint",isP=tx.category==="personal",isI=tx.category==="ignore";
   const predicted=tx.category&&!tx.confirmed;
-  const done=tx.confirmed&&tx.subcategory;
+  const done=tx.confirmed&&(tx.subcategory||isI);
   const isRefund=tx.amount<0;
 
   const doSplit=()=>{
@@ -609,6 +614,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
         }},"✓"),
         h("button",{className:"cat-btn"+(isJ?(predicted?" predicted-j":" active-j"):""),onClick:()=>{onCat(tx.id,"joint");setShowSubs(true);}},(!predicted&&isJ)&&h(CheckIcon)," J"),
         h("button",{className:"cat-btn"+(isP?(predicted?" predicted-p":" active-p"):""),onClick:()=>{onCat(tx.id,"personal");setShowSubs(true);}},(!predicted&&isP)&&h(CheckIcon)," P"),
+        h("button",{className:"cat-btn"+(isI?(predicted?" predicted-i":" active-i"):""),onClick:()=>onCat(tx.id,"ignore")},(!predicted&&isI)&&h(CheckIcon)," I"),
         !tx.splitFrom&&tx.amount>0&&h("button",{className:"cat-btn",onClick:()=>setShowSplit(!showSplit),style:{fontSize:11,padding:"4px 8px"}},showSplit?"Cancel":"÷"),
         h("button",{className:"recurring-toggle"+(tx.recurring?" active":""),onClick:()=>{
           const next=!tx.recurring;setShowFreq(next);
@@ -636,11 +642,13 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
       h("input",{className:"split-input",type:"number",step:"0.01",min:"0.01",max:(tx.amount-0.01).toFixed(2),value:splitAmt,onChange:e=>setSplitAmt(e.target.value),placeholder:"0.00",autoFocus:true}),
       h("button",{className:"cat-btn"+(splitCat1==="joint"?" active-j":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat1("joint")},"J"),
       h("button",{className:"cat-btn"+(splitCat1==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat1("personal")},"P"),
+      h("button",{className:"cat-btn"+(splitCat1==="ignore"?" active-i":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat1("ignore")},"I"),
       h("span",{style:{color:"var(--color-text-tertiary,#aaa)",fontSize:11,minWidth:36,marginLeft:8}},"Part 2"),
       h("span",{className:"split-input mono",style:{lineHeight:"28px",color:"var(--color-text-secondary,#666)"}},
         splitAmt&&!isNaN(parseFloat(splitAmt))?"£"+(tx.amount-parseFloat(splitAmt)).toFixed(2):"—"),
       h("button",{className:"cat-btn"+(splitCat2==="joint"?" active-j":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat2("joint")},"J"),
       h("button",{className:"cat-btn"+(splitCat2==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat2("personal")},"P"),
+      h("button",{className:"cat-btn"+(splitCat2==="ignore"?" active-i":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>setSplitCat2("ignore")},"I"),
       h("button",{className:"pill",style:{padding:"3px 10px",marginLeft:4},onClick:doSplit},"Split")
     ),
     // Collapsed summary row — click subcategory to expand pickers
@@ -678,7 +686,7 @@ function TxRow({tx,onCat,onSub,onConfirm,onSplit,onRecurring,onNotes,onPriority,
 
 // ── Summary ──
 function Summary({txs,onBack,onReset}){
-  const joint=txs.filter(t=>t.category==="joint"),personal=txs.filter(t=>t.category==="personal");
+  const joint=txs.filter(t=>t.category==="joint"),personal=txs.filter(t=>t.category==="personal"),ignored=txs.filter(t=>t.category==="ignore");
   const jT=joint.reduce((s,t)=>s+t.amount,0),pT=personal.reduce((s,t)=>s+t.amount,0),total=jT+pT;
   const sources=[...new Set(txs.map(t=>t.source))];
   const sortedDates=[...txs].sort((a,b)=>a.date.localeCompare(b.date));
@@ -706,6 +714,7 @@ function Summary({txs,onBack,onReset}){
       h("div",{className:"card"},h("div",{className:"mono",style:{fontSize:12,fontWeight:500,color:"var(--color-text-info,#185fa5)",textTransform:"uppercase",letterSpacing:"0.05em"}},"Joint"),h("div",{className:"mono",style:{fontSize:28,fontWeight:600,marginTop:4}},fmtAmt(jT)),h("div",{style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)",marginTop:4}},joint.length+" transactions")),
       h("div",{className:"card"},h("div",{className:"mono",style:{fontSize:12,fontWeight:500,color:"var(--color-text-warning,#854f0b)",textTransform:"uppercase",letterSpacing:"0.05em"}},"Personal"),h("div",{className:"mono",style:{fontSize:28,fontWeight:600,marginTop:4}},fmtAmt(pT)),h("div",{style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)",marginTop:4}},personal.length+" transactions"))
     ),
+    ignored.length>0&&h("div",{style:{marginBottom:24,fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},ignored.length+" ignored transaction"+(ignored.length===1?"":"s")+" ("+fmtAmt(ignored.reduce((s,t)=>s+t.amount,0))+" excluded)"),
 
     h("div",{className:"card",style:{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"center"}},
       h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Total spend"),h("div",{className:"mono",style:{fontSize:20,fontWeight:600}},fmtAmt(total))),
@@ -736,7 +745,7 @@ function Summary({txs,onBack,onReset}){
         tx.subcategory&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0}},tx.subcategory),
         tx.subcategory2&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0}},"› "+tx.subcategory2),
         tx.notes&&h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",flexShrink:0,fontStyle:"italic",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},title:tx.notes},"✎ "+tx.notes),
-        h("span",{style:{fontSize:10,fontWeight:500,padding:"1px 6px",borderRadius:4,flexShrink:0,background:tx.category==="joint"?"var(--color-background-info,#e6f1fb)":"var(--color-background-warning,#faeeda)",color:tx.category==="joint"?"var(--color-text-info,#185fa5)":"var(--color-text-warning,#854f0b)"}},tx.category==="joint"?"J":"P"),
+        h("span",{style:{fontSize:10,fontWeight:500,padding:"1px 6px",borderRadius:4,flexShrink:0,background:tx.category==="joint"?"var(--color-background-info,#e6f1fb)":tx.category==="ignore"?"#f3f4f6":"var(--color-background-warning,#faeeda)",color:tx.category==="joint"?"var(--color-text-info,#185fa5)":tx.category==="ignore"?"#6b7280":"var(--color-text-warning,#854f0b)"}},tx.category==="joint"?"J":tx.category==="ignore"?"I":"P"),
         h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:tx.amount<0?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount))
       )))
   );
@@ -833,7 +842,7 @@ function parseTrendsCsv(text){
     const pri=iPri>=0&&PRIORITIES.includes(p[iPri])?p[iPri]:null;
     txs.push({date:normaliseDate(p[iDate]),description:iDesc>=0?p[iDesc]:"",amount:amt,category:cat,subcategory:iSub>=0?p[iSub]||null:null,subcategory2:iSub2>=0?p[iSub2]||null:null,source:iSrc>=0?p[iSrc]:"unknown",recurring:rec,recurringFrequency:recF,recurringCustom:recC,notes:iNotes>=0?p[iNotes]||null:null,priority:pri});
   }
-  const hasCats=txs.some(t=>t.category==="joint"||t.category==="personal");
+  const hasCats=txs.some(t=>t.category==="joint"||t.category==="personal"||t.category==="ignore");
   return{txs,hasCats};
 }
 
@@ -1119,7 +1128,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
 
   const monthly=React.useMemo(()=>{
     const m={};
-    filteredTxs.forEach(t=>{
+    filteredTxs.filter(t=>t.category!=="ignore").forEach(t=>{
       const k=monthKey(t.date);
       if(!m[k])m[k]={month:k,joint:0,personal:0,total:0,count:0};
       if(t.category==="joint")m[k].joint+=t.amount;
@@ -1312,7 +1321,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
         // Row 2: joint/personal
         h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
           h("span",{className:"mono",style:{fontSize:11,color:"var(--color-text-tertiary,#aaa)",minWidth:32}},"Show"),
-          ["all","joint","personal"].map(c=>h("button",{key:c,
+          ["all","joint","personal","ignore"].map(c=>h("button",{key:c,
             className:"pill"+(catFilter===c?" pill-primary":""),
             style:{fontSize:11,padding:"3px 10px",textTransform:"capitalize"},
             onClick:()=>setCatFilter(c)},c))
@@ -1491,6 +1500,7 @@ function TrendsTxList({txs,onRecurring,onNotes,onPriority,onCat,onSub,subs,onAdd
             h("span",{className:"mono",style:{fontWeight:500,fontSize:13,minWidth:70,textAlign:"right",flexShrink:0,color:tx.amount<0?"var(--color-text-success,#3b6d11)":undefined}},fmtAmt(tx.amount)),
             onCat&&h("button",{className:"cat-btn"+(tx.category==="joint"?" active-j":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>{onCat(txKey,"joint");setSubPickerId(txKey);}},tx.category==="joint"&&h(CheckIcon)," J"),
             onCat&&h("button",{className:"cat-btn"+(tx.category==="personal"?" active-p":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>{onCat(txKey,"personal");setSubPickerId(txKey);}},tx.category==="personal"&&h(CheckIcon)," P"),
+            onCat&&h("button",{className:"cat-btn"+(tx.category==="ignore"?" active-i":""),style:{padding:"2px 8px",fontSize:11},onClick:()=>onCat(txKey,"ignore")},tx.category==="ignore"&&h(CheckIcon)," I"),
             onRecurring&&h("button",{className:"recurring-toggle"+(tx.recurring?" active":""),style:{marginLeft:4,padding:"2px 6px",fontSize:11},onClick:()=>{
               if(tx.recurring){onRecurring(txKey,false,null,null);setEditingId(null);}
               else startEdit(tx);
