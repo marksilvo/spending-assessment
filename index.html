@@ -136,7 +136,7 @@ function parseNationwide(text){
 }
 
 async function parseFile(file){
-  const text=await file.text();
+  const text=(await file.text()).replace(/^﻿/,"");
   if(text.trimStart().startsWith('"Account Name:'))return{source:"nationwide",transactions:parseNationwide(text)};
   if(file.name.endsWith(".csv")||text.trimStart().startsWith("Date,"))return{source:"amex",transactions:parseAmex(text)};
   if(file.name.endsWith(".xls")||text.trimStart().startsWith("<!DOCTYPE")||text.trimStart().startsWith("<html"))return{source:"santander",transactions:parseSantander(text)};
