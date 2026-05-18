@@ -51,6 +51,7 @@ button{cursor:pointer;font-family:inherit}
 .err{padding:12px 16px;border-radius:8px;background:var(--color-background-danger,#fcebeb);color:var(--color-text-danger,#a32d2d);font-size:14px;margin-bottom:16px}
 .badge-san{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-family:"DM Mono",monospace;font-weight:500;background:#FAECE7;color:#993C1D}
 .badge-amex{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-family:"DM Mono",monospace;font-weight:500;background:#E6F1FB;color:#185FA5}
+.badge-nw{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-family:"DM Mono",monospace;font-weight:500;background:#E8F5E9;color:#2E7D32}
 .summary-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--color-border-tertiary,#ddd);font-size:13px}
 .sub-picker{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;padding:2px 0 6px 56px}
 .sub2-picker{display:flex;flex-wrap:wrap;gap:4px;margin-top:0;padding:2px 0 6px 72px}
@@ -108,16 +109,43 @@ function parseSantander(text){
   return txs;
 }
 
+function parseNationwide(text){
+  const lines=text.split("\n").map(l=>l.trim()).filter(Boolean),txs=[];
+  const months={Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12"};
+  let started=false;
+  for(const line of lines){
+    const p=csvLine(line);
+    if(!started){if(p[0]==='"Date"'||p[0]==="Date")started=true;continue;}
+    if(p.length<5)continue;
+    const dm=p[0].replace(/"/g,"").match(/(\d{1,2})\s+(\w{3})\s+(\d{4})/);
+    if(!dm)continue;
+    const mon=months[dm[2]];if(!mon)continue;
+    const date=`${dm[3]}-${mon}-${dm[1].padStart(2,"0")}`;
+    const txType=p[1].replace(/"/g,"").trim();
+    const desc=p[2].replace(/"/g,"").replace(/\s{2,}/g," ").trim();
+    if(SKIP.some(s=>s.test(desc)))continue;
+    const paidOut=p[3].replace(/"/g,"").replace(/[£,]/g,"").trim();
+    const paidIn=p[4].replace(/"/g,"").replace(/[£,]/g,"").trim();
+    let amt=0;
+    if(paidOut)amt=parseFloat(paidOut);
+    else if(paidIn)amt=-parseFloat(paidIn);
+    if(isNaN(amt)||amt===0)continue;
+    txs.push({id:crypto.randomUUID(),date,description:desc,amount:amt,source:"nationwide",category:null,subcategory:null,confirmed:false,splitFrom:null,recurring:false,recurringFrequency:null,recurringCustom:null,notes:null,priority:null,subcategory2:null});
+  }
+  return txs;
+}
+
 async function parseFile(file){
   const text=await file.text();
+  if(text.trimStart().startsWith('"Account Name:'))return{source:"nationwide",transactions:parseNationwide(text)};
   if(file.name.endsWith(".csv")||text.trimStart().startsWith("Date,"))return{source:"amex",transactions:parseAmex(text)};
   if(file.name.endsWith(".xls")||text.trimStart().startsWith("<!DOCTYPE")||text.trimStart().startsWith("<html"))return{source:"santander",transactions:parseSantander(text)};
-  throw new Error("Unrecognised file. Expected Amex CSV or Santander XLS.");
+  throw new Error("Unrecognised file. Expected Amex CSV, Santander XLS, or Nationwide CSV.");
 }
 
 // ── Rules ──
 function normMerchant(d){
-  return d.replace(/\s+(GB|UK|NL|US|IE)\s*$/i,"").replace(/\s+(APL|RETAIL|GOODS)$/i,"")
+  return d.replace(/\s+APPLEPAY\s+\d+\s*$/i,"").replace(/\s+(GB|UK|NL|US|IE)\s*$/i,"").replace(/\s+(APL|RETAIL|GOODS)$/i,"")
     .replace(/\s+\d{4,}.*$/i,"").replace(/\s+(LONDON|BIRMINGHAM|STAFFORD|MANCHESTER|CANNOCK|STOKE-ON-TREN|DUBLIN|WOKING|SHIPLEY|ALTRINCHAM|SAN FRANCISCO|GORING-BY-SEA|WELWYN GARDEN C?|WEST MIDLANDS|BROCTON|HOLLYHILL|AMAZON\.CO\.UK|INTERNET)\s*$/i,"")
     .replace(/\*\S+/g,"").replace(/\s+/g," ").trim().toUpperCase();
 }
@@ -434,7 +462,7 @@ function App(){
         onDragOver:e=>{e.preventDefault();e.currentTarget.classList.add("over");},onDragLeave:e=>{e.currentTarget.classList.remove("over");},
         onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove("over");handleFiles(Array.from(e.dataTransfer.files));}},
         loading?h("div",{className:"mono",style:{fontSize:14,color:"var(--color-text-secondary,#666)"}},"Parsing...")
-          :h(React.Fragment,null,h("div",{style:{color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},h(UploadIcon)),h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},"Drop statement files"),h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},"XLS and CSV supported — drop multiple at once")),
+          :h(React.Fragment,null,h("div",{style:{color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},h(UploadIcon)),h("p",{style:{fontSize:16,fontWeight:500,marginBottom:4}},"Drop statement files"),h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},"XLS and CSV supported (Amex, Santander, Nationwide) — drop multiple at once")),
         h("input",{ref:fileRef,type:"file",accept:".csv,.xls,.xlsx",multiple:true,onChange:e=>handleFiles(Array.from(e.target.files)),style:{display:"none"}})
       ),
       !showManual&&h("div",{style:{textAlign:"center",marginTop:12}},
@@ -446,7 +474,7 @@ function App(){
     view==="review"&&h("div",null,
       h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}},
         h("div",{style:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}},
-          sources.map(s=>h("span",{key:s,className:s==="santander"?"badge-san":"badge-amex"},s==="santander"?"Santander":"Amex")),
+          sources.map(s=>h("span",{key:s,className:s==="santander"?"badge-san":s==="nationwide"?"badge-nw":"badge-amex"},s==="santander"?"Santander":s==="nationwide"?"Nationwide":"Amex")),
           h("span",{style:{fontSize:13,color:"var(--color-text-secondary,#666)"}},confirmedCount+"/"+txs.length+" confirmed"),
           predictedCount>0&&h("span",{style:{fontSize:12,color:"var(--color-text-success,#3b6d11)"}},"("+predictedCount+" predicted)")
         ),
@@ -485,7 +513,7 @@ function App(){
 }
 
 // ── Manual Transaction Form ──
-const KNOWN_SOURCES=["amex","santander","cash"];
+const KNOWN_SOURCES=["amex","santander","nationwide","cash"];
 function ManualTxForm({onAdd,onCancel,existingSources}){
   const allSources=[...new Set([...KNOWN_SOURCES,...(existingSources||[])])];
   const today=new Date().toISOString().slice(0,10);
@@ -682,7 +710,7 @@ function Summary({txs,onBack,onReset}){
     h("div",{className:"card",style:{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"center"}},
       h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Total spend"),h("div",{className:"mono",style:{fontSize:20,fontWeight:600}},fmtAmt(total))),
       h("div",{style:{textAlign:"right",display:"flex",flexDirection:"column",gap:6}},
-        h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Sources"),h("div",{style:{display:"flex",gap:4,marginTop:4,justifyContent:"flex-end"}},sources.map(s=>h("span",{key:s,className:s==="santander"?"badge-san":"badge-amex"},s==="santander"?"Santander":"Amex")))),
+        h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Sources"),h("div",{style:{display:"flex",gap:4,marginTop:4,justifyContent:"flex-end"}},sources.map(s=>h("span",{key:s,className:s==="santander"?"badge-san":s==="nationwide"?"badge-nw":"badge-amex"},s==="santander"?"Santander":s==="nationwide"?"Nationwide":"Amex")))),
         dateRange&&h("div",null,h("div",{className:"mono",style:{fontSize:12,color:"var(--color-text-tertiary,#aaa)"}},"Period"),h("div",{className:"mono",style:{fontSize:12,fontWeight:500,marginTop:2}},dateRange)))
 
     ),
