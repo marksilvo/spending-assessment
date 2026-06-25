@@ -751,6 +751,34 @@ function Summary({txs,onBack,onReset}){
   );
 }
 
+function SubsTable({title,rows}){
+  if(!rows.length)return null;
+  const cadenceLabel=c=>c==="annual"?"yearly":c==="weekly"?"weekly":c==="monthly"?"monthly":c;
+  const head=(lbl,w)=>h("span",{className:"mono",style:{minWidth:w,textAlign:"right"}},lbl);
+  const num=(v,extra)=>h("span",{className:"mono",style:{minWidth:extra&&extra.minWidth||80,textAlign:"right",...extra}},v);
+  return h("div",{style:{marginBottom:24}},
+    h("h3",{style:{fontSize:14,fontWeight:500,marginBottom:8}},title),
+    h("div",{style:{overflowX:"auto"}},
+      // header
+      h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"2px solid var(--color-border-tertiary,#ddd)",fontSize:11,fontWeight:600,color:"var(--color-text-tertiary,#aaa)",minWidth:480}},
+        h("span",{className:"mono",style:{flex:"1 1 auto",minWidth:140}},"Merchant"),
+        head("Charge",72),head("Per month",84),head("Per year",84),head("Last seen",84)),
+      rows.map(s=>h("div",{key:s.key,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",fontSize:13,minWidth:480}},
+        h("span",{style:{flex:"1 1 auto",minWidth:140}},
+          h("span",{style:{fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"block"}},s.merchant),
+          h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",display:"flex",gap:6,flexWrap:"wrap",marginTop:2}},
+            h("span",null,cadenceLabel(s.cadence)),
+            h("span",null,s.monthsSeen+"× seen"),
+            s.category&&h("span",null,s.subcategory||s.category),
+            s.priority&&h("span",null,priorityLabel(s.priority)),
+            s.manual&&h("span",{style:{color:"#6b21a8"}},"↻ tagged"))),
+        num(fmtAmt(s.amount),{minWidth:72,color:"var(--color-text-tertiary,#aaa)"}),
+        num(fmtAmt(s.monthlyCost),{minWidth:84}),
+        num(fmtAmt(s.annualCost),{minWidth:84,fontWeight:600}),
+        num(s.lastDate,{minWidth:84,fontSize:11,color:"var(--color-text-tertiary,#aaa)"})))
+    )
+  );
+}
 function SubBreak({groups}){
   const[expanded,setExpanded]=useState({});
   if(!groups.length)return h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)",marginBottom:12}},"No transactions");
@@ -847,6 +875,59 @@ function parseTrendsCsv(text){
 }
 
 function monthKey(d){return d.slice(0,7);}
+function median(arr){if(!arr.length)return 0;const s=[...arr].sort((a,b)=>a-b);const m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;}
+function monthsBetween(a,b){return (new Date(b).getFullYear()-new Date(a).getFullYear())*12+(new Date(b).getMonth()-new Date(a).getMonth());}
+
+// Detect likely subscriptions: merchants billed on a regular cadence at a consistent amount.
+// Auto-detects monthly (≥3 distinct months, ~1/month) and annual (~12-month gap) patterns,
+// and always includes anything manually tagged recurring. Returns rows sorted by annual cost.
+function detectSubscriptions(txs){
+  const groups={};
+  txs.forEach(t=>{
+    if(t.category==="ignore")return;
+    if(!(t.amount>0))return; // spending only — skip refunds/income/cashback
+    const k=normMerchant(t.description);
+    if(!k||k.length<3)return;
+    (groups[k]=groups[k]||[]).push(t);
+  });
+  const subs=[];
+  for(const items of Object.values(groups)){
+    const occ=[...items].sort((a,b)=>a.date.localeCompare(b.date));
+    const amounts=occ.map(t=>t.amount);
+    const med=median(amounts);
+    const tol=Math.max(med*0.15,1);
+    const consistent=occ.filter(t=>Math.abs(t.amount-med)<=tol).length/occ.length>=0.6;
+    const distinctMonths=new Set(occ.map(t=>monthKey(t.date))).size;
+    const span=monthsBetween(occ[0].date,occ[occ.length-1].date)+1; // inclusive month span
+    const manual=occ.find(t=>t.recurring);
+    const manualFreq=manual&&manual.recurringFrequency;
+    // gaps between consecutive distinct-month charges
+    const monthList=[...new Set(occ.map(t=>monthKey(t.date)))].sort();
+    const gaps=[];for(let i=1;i<monthList.length;i++)gaps.push(monthsBetween(monthList[i-1]+"-01",monthList[i]+"-01"));
+    const medGap=median(gaps);
+
+    let cadence=null;
+    if(consistent&&distinctMonths>=3&&medGap<=1.5&&occ.length>=span*0.5)cadence="monthly";
+    else if(consistent&&occ.length>=2&&medGap>=10&&medGap<=14)cadence="annual";
+    if(!cadence&&manualFreq)cadence=manualFreq==="yearly"?"annual":manualFreq; // weekly/monthly/custom from tag
+    else if(!cadence&&manual)cadence="monthly";
+    if(!cadence)continue;
+
+    let monthlyCost;
+    if(cadence==="annual")monthlyCost=med/12;
+    else if(cadence==="weekly")monthlyCost=med*52/12;
+    else monthlyCost=med; // monthly / custom default
+    const last=occ[occ.length-1];
+    subs.push({
+      merchant:last.description, key:normMerchant(last.description), cadence,
+      amount:med, monthlyCost, annualCost:monthlyCost*12,
+      count:occ.length, monthsSeen:distinctMonths, firstDate:occ[0].date, lastDate:last.date,
+      category:last.category, subcategory:last.subcategory, priority:last.priority,
+      manual:!!manual, source:last.source,
+    });
+  }
+  return subs.sort((a,b)=>b.annualCost-a.annualCost);
+}
 
 function Chart({data,width,height}){
   const canvasRef=useRef(null);
@@ -1079,6 +1160,11 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const hasAnyPriority=React.useMemo(()=>allTxs.some(t=>t.priority),[allTxs]);
   const[trendsTab,setTrendsTab]=useState("trends"); // "trends"|"averages"
   const[avgWindow,setAvgWindow]=useState("all"); // "3"|"6"|"12"|"all"
+  // Subscriptions are detected from the full history (not the active filters) so cadence is accurate.
+  const subscriptions=React.useMemo(()=>detectSubscriptions(allTxs),[allTxs]);
+  const subsMonthly=React.useMemo(()=>subscriptions.filter(s=>s.cadence!=="annual"),[subscriptions]);
+  const subsAnnual=React.useMemo(()=>subscriptions.filter(s=>s.cadence==="annual"),[subscriptions]);
+  const subsTotalMonthly=React.useMemo(()=>subscriptions.reduce((a,s)=>a+s.monthlyCost,0),[subscriptions]);
 
   // Detail options for the active primary filter — from transactions AND sub2Config
   const availableSub2Opts=React.useMemo(()=>{
@@ -1401,7 +1487,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
 
       // ── Sub-tab toggle ──
       h("div",{style:{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}},
-        [["trends","Trends"],["averages","Averages"]].map(([k,lbl])=>h("button",{key:k,
+        [["trends","Trends"],["averages","Averages"],["subscriptions","Subscriptions"]].map(([k,lbl])=>h("button",{key:k,
           className:"pill"+(trendsTab===k?" pill-primary":""),
           style:{fontSize:12,padding:"4px 14px"},
           onClick:()=>setTrendsTab(k)},lbl))
@@ -1513,6 +1599,27 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
           // Per-category average per month
           h("h3",{style:{fontSize:14,fontWeight:500,marginBottom:8}},"Average per month by category"),
           h(SubBreak,{groups:avgSubBreak})
+        )
+      ),
+
+      // ── Subscriptions sub-tab ──
+      trendsTab==="subscriptions"&&h(React.Fragment,null,
+        subscriptions.length===0&&h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},
+          "No recurring subscriptions detected yet. They show up once a merchant has been charged consistently across several months (or you've tagged it ↻ recurring)."),
+        subscriptions.length>0&&h(React.Fragment,null,
+          h("p",{className:"mono",style:{fontSize:12,color:"var(--color-text-secondary,#666)",marginBottom:16}},
+            "Recurring payments detected by merchant, amount and cadence across your full history. Variable spending (shopping, groceries) is excluded."),
+          // summary cards
+          h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}},
+            [["Subscriptions",String(subscriptions.length),"var(--color-text-tertiary,#aaa)"],
+             ["Per month",fmtAmt(subsTotalMonthly),"var(--color-text-info,#185fa5)"],
+             ["Per year",fmtAmt(subsTotalMonthly*12),"var(--color-text-warning,#854f0b)"]].map(([lbl,v,col])=>
+              h("div",{key:lbl,className:"card"},
+                h("div",{className:"mono",style:{fontSize:11,fontWeight:500,color:col,textTransform:"uppercase",letterSpacing:"0.05em"}},lbl),
+                h("div",{className:"mono",style:{fontSize:22,fontWeight:600,marginTop:4}},v)))
+          ),
+          h(SubsTable,{title:"Monthly",rows:subsMonthly}),
+          h(SubsTable,{title:"Annual & other",rows:subsAnnual})
         )
       )
     )
