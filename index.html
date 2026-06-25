@@ -752,18 +752,36 @@ function Summary({txs,onBack,onReset}){
 }
 
 function SubsTable({title,rows}){
+  // Sort key + direction. Default: most recently seen first.
+  const[sortKey,setSortKey]=useState("lastDate");
+  const[sortDir,setSortDir]=useState("desc");
   if(!rows.length)return null;
   const cadenceLabel=c=>c==="annual"?"yearly":c==="weekly"?"weekly":c==="monthly"?"monthly":c;
-  const head=(lbl,w)=>h("span",{className:"mono",style:{minWidth:w,textAlign:"right"}},lbl);
+  const onSort=k=>{
+    if(k===sortKey)setSortDir(d=>d==="asc"?"desc":"asc");
+    else{setSortKey(k);setSortDir(k==="merchant"?"asc":"desc");} // text asc, numbers/dates desc by default
+  };
+  const sorted=[...rows].sort((a,b)=>{
+    let av=a[sortKey],bv=b[sortKey];
+    let cmp=sortKey==="merchant"?String(av).localeCompare(String(bv))
+      :sortKey==="lastDate"?String(av).localeCompare(String(bv))
+      :av-bv;
+    return sortDir==="asc"?cmp:-cmp;
+  });
+  const arrow=k=>sortKey===k?(sortDir==="asc"?" ▲":" ▼"):"";
+  // clickable header cell; sortKey k, label lbl, right-aligned numeric unless flex
+  const head=(lbl,k,opts)=>h("span",{className:"mono",onClick:()=>onSort(k),
+    style:{cursor:"pointer",userSelect:"none",color:sortKey===k?"var(--color-text-secondary,#666)":"var(--color-text-tertiary,#aaa)",
+      ...(opts&&opts.flex?{flex:"1 1 auto",minWidth:140}:{minWidth:(opts&&opts.w)||84,textAlign:"right"})}},lbl+arrow(k));
   const num=(v,extra)=>h("span",{className:"mono",style:{minWidth:extra&&extra.minWidth||80,textAlign:"right",...extra}},v);
   return h("div",{style:{marginBottom:24}},
     h("h3",{style:{fontSize:14,fontWeight:500,marginBottom:8}},title),
     h("div",{style:{overflowX:"auto"}},
-      // header
-      h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"2px solid var(--color-border-tertiary,#ddd)",fontSize:11,fontWeight:600,color:"var(--color-text-tertiary,#aaa)",minWidth:480}},
-        h("span",{className:"mono",style:{flex:"1 1 auto",minWidth:140}},"Merchant"),
-        head("Charge",72),head("Per month",84),head("Per year",84),head("Last seen",84)),
-      rows.map(s=>h("div",{key:s.key,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",fontSize:13,minWidth:480}},
+      // header (click to sort)
+      h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"2px solid var(--color-border-tertiary,#ddd)",fontSize:11,fontWeight:600,minWidth:480}},
+        head("Merchant","merchant",{flex:true}),
+        head("Charge","amount",{w:72}),head("Per month","monthlyCost"),head("Per year","annualCost"),head("Last seen","lastDate")),
+      sorted.map(s=>h("div",{key:s.key,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",fontSize:13,minWidth:480}},
         h("span",{style:{flex:"1 1 auto",minWidth:140}},
           h("span",{style:{fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"block"}},s.merchant),
           h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",display:"flex",gap:6,flexWrap:"wrap",marginTop:2}},
