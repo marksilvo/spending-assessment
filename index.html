@@ -751,11 +751,12 @@ function Summary({txs,onBack,onReset}){
   );
 }
 
-function SubsTable({title,rows}){
+function SubsTable({title,rows,onHide,onUnhide}){
   // Sort key + direction. Default: most recently seen first.
   const[sortKey,setSortKey]=useState("lastDate");
   const[sortDir,setSortDir]=useState("desc");
   if(!rows.length)return null;
+  const hasAction=!!(onHide||onUnhide);
   const cadenceLabel=c=>c==="annual"?"yearly":c==="weekly"?"weekly":c==="monthly"?"monthly":c;
   const onSort=k=>{
     if(k===sortKey)setSortDir(d=>d==="asc"?"desc":"asc");
@@ -778,10 +779,11 @@ function SubsTable({title,rows}){
     h("h3",{style:{fontSize:14,fontWeight:500,marginBottom:8}},title),
     h("div",{style:{overflowX:"auto"}},
       // header (click to sort)
-      h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"2px solid var(--color-border-tertiary,#ddd)",fontSize:11,fontWeight:600,minWidth:480}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"2px solid var(--color-border-tertiary,#ddd)",fontSize:11,fontWeight:600,minWidth:hasAction?520:480}},
         head("Merchant","merchant",{flex:true}),
-        head("Charge","amount",{w:72}),head("Per month","monthlyCost"),head("Per year","annualCost"),head("Last seen","lastDate")),
-      sorted.map(s=>h("div",{key:s.key,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",fontSize:13,minWidth:480}},
+        head("Charge","amount",{w:72}),head("Per month","monthlyCost"),head("Per year","annualCost"),head("Last seen","lastDate"),
+        hasAction&&h("span",{style:{minWidth:36}})),
+      sorted.map(s=>h("div",{key:s.key,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--color-border-tertiary,#ddd)",fontSize:13,minWidth:hasAction?520:480}},
         h("span",{style:{flex:"1 1 auto",minWidth:140}},
           h("span",{style:{fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"block"}},s.merchant),
           h("span",{className:"mono",style:{fontSize:10,color:"var(--color-text-tertiary,#aaa)",display:"flex",gap:6,flexWrap:"wrap",marginTop:2}},
@@ -793,7 +795,10 @@ function SubsTable({title,rows}){
         num(fmtAmt(s.amount),{minWidth:72,color:"var(--color-text-tertiary,#aaa)"}),
         num(fmtAmt(s.monthlyCost),{minWidth:84}),
         num(fmtAmt(s.annualCost),{minWidth:84,fontWeight:600}),
-        num(s.lastDate,{minWidth:84,fontSize:11,color:"var(--color-text-tertiary,#aaa)"})))
+        num(s.lastDate,{minWidth:84,fontSize:11,color:"var(--color-text-tertiary,#aaa)"}),
+        onHide&&h("button",{title:"Hide — not a subscription",onClick:()=>onHide(s.key),
+          style:{minWidth:36,background:"none",border:"none",cursor:"pointer",color:"var(--color-text-tertiary,#aaa)",fontSize:15,lineHeight:1,padding:"2px 6px"}},"✕"),
+        onUnhide&&h("button",{onClick:()=>onUnhide(s.key),className:"pill",style:{minWidth:36,fontSize:11,padding:"2px 8px"}},"Restore")))
     )
   );
 }
@@ -1000,6 +1005,9 @@ const LS_KEY="st-trends";
 
 function saveTrendsLS(txs){try{localStorage.setItem(LS_KEY,JSON.stringify(txs));}catch{}}
 function loadTrendsLS(){try{const s=localStorage.getItem(LS_KEY);return s?JSON.parse(s):[];}catch{return[];}}
+const HIDDEN_SUBS_KEY="st-subs-hidden"; // merchant keys the user has dismissed as not-a-subscription
+function saveHiddenSubs(keys){try{localStorage.setItem(HIDDEN_SUBS_KEY,JSON.stringify(keys));}catch{}}
+function loadHiddenSubs(){try{const s=localStorage.getItem(HIDDEN_SUBS_KEY);return s?JSON.parse(s):[];}catch{return[];}}
 
 async function readDeletedFromDir(dirHandle){
   try{const fh=await dirHandle.getFileHandle(DELETED_FILE);const file=await fh.getFile();const text=await file.text();return new Set(JSON.parse(text));}catch{return new Set();}
@@ -1180,9 +1188,16 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const[avgWindow,setAvgWindow]=useState("all"); // "3"|"6"|"12"|"all"
   // Subscriptions are detected from the full history (not the active filters) so cadence is accurate.
   const subscriptions=React.useMemo(()=>detectSubscriptions(allTxs),[allTxs]);
-  const subsMonthly=React.useMemo(()=>subscriptions.filter(s=>s.cadence!=="annual"),[subscriptions]);
-  const subsAnnual=React.useMemo(()=>subscriptions.filter(s=>s.cadence==="annual"),[subscriptions]);
-  const subsTotalMonthly=React.useMemo(()=>subscriptions.reduce((a,s)=>a+s.monthlyCost,0),[subscriptions]);
+  const[hiddenSubs,setHiddenSubs]=useState(loadHiddenSubs); // merchant keys dismissed as not-a-subscription
+  useEffect(()=>{saveHiddenSubs(hiddenSubs);},[hiddenSubs]);
+  const hideSub=useCallback(k=>setHiddenSubs(prev=>prev.includes(k)?prev:[...prev,k]),[]);
+  const unhideSub=useCallback(k=>setHiddenSubs(prev=>prev.filter(x=>x!==k)),[]);
+  const visibleSubs=React.useMemo(()=>subscriptions.filter(s=>!hiddenSubs.includes(s.key)),[subscriptions,hiddenSubs]);
+  const hiddenSubsList=React.useMemo(()=>subscriptions.filter(s=>hiddenSubs.includes(s.key)),[subscriptions,hiddenSubs]);
+  const subsMonthly=React.useMemo(()=>visibleSubs.filter(s=>s.cadence!=="annual"),[visibleSubs]);
+  const subsAnnual=React.useMemo(()=>visibleSubs.filter(s=>s.cadence==="annual"),[visibleSubs]);
+  const subsTotalMonthly=React.useMemo(()=>visibleSubs.reduce((a,s)=>a+s.monthlyCost,0),[visibleSubs]);
+  const[showHiddenSubs,setShowHiddenSubs]=useState(false);
 
   // Detail options for the active primary filter — from transactions AND sub2Config
   const availableSub2Opts=React.useMemo(()=>{
@@ -1626,18 +1641,26 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
           "No recurring subscriptions detected yet. They show up once a merchant has been charged consistently across several months (or you've tagged it ↻ recurring)."),
         subscriptions.length>0&&h(React.Fragment,null,
           h("p",{className:"mono",style:{fontSize:12,color:"var(--color-text-secondary,#666)",marginBottom:16}},
-            "Recurring payments detected by merchant, amount and cadence across your full history. Variable spending (shopping, groceries) is excluded."),
+            "Recurring payments detected by merchant, amount and cadence across your full history. Variable spending (shopping, groceries) is excluded. Use ✕ to hide anything that isn't really a subscription."),
           // summary cards
           h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}},
-            [["Subscriptions",String(subscriptions.length),"var(--color-text-tertiary,#aaa)"],
+            [["Subscriptions",String(visibleSubs.length),"var(--color-text-tertiary,#aaa)"],
              ["Per month",fmtAmt(subsTotalMonthly),"var(--color-text-info,#185fa5)"],
              ["Per year",fmtAmt(subsTotalMonthly*12),"var(--color-text-warning,#854f0b)"]].map(([lbl,v,col])=>
               h("div",{key:lbl,className:"card"},
                 h("div",{className:"mono",style:{fontSize:11,fontWeight:500,color:col,textTransform:"uppercase",letterSpacing:"0.05em"}},lbl),
                 h("div",{className:"mono",style:{fontSize:22,fontWeight:600,marginTop:4}},v)))
           ),
-          h(SubsTable,{title:"Monthly",rows:subsMonthly}),
-          h(SubsTable,{title:"Annual & other",rows:subsAnnual})
+          visibleSubs.length===0&&h("p",{style:{fontSize:13,color:"var(--color-text-tertiary,#aaa)"}},
+            "All detected subscriptions are hidden."),
+          h(SubsTable,{title:"Monthly",rows:subsMonthly,onHide:hideSub}),
+          h(SubsTable,{title:"Annual & other",rows:subsAnnual,onHide:hideSub}),
+          // Hidden subscriptions — collapsible review/restore
+          hiddenSubsList.length>0&&h("div",{style:{marginTop:8}},
+            h("button",{className:"pill",style:{fontSize:12},onClick:()=>setShowHiddenSubs(v=>!v)},
+              (showHiddenSubs?"▾ ":"▸ ")+"Hidden ("+hiddenSubsList.length+")"),
+            showHiddenSubs&&h("div",{style:{marginTop:12,opacity:0.75}},
+              h(SubsTable,{title:"Hidden",rows:hiddenSubsList,onUnhide:unhideSub})))
         )
       )
     )
