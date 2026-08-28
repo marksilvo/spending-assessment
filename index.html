@@ -1090,6 +1090,11 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   const[loading,setLoading]=useState(false);
   const[status,setStatus]=useState(null);
   const fileRef=useRef(null);
+  // True once this mount has loaded transactions from the folder. The localStorage
+  // cache must never be written back to the master file: on remount (e.g. leaving and
+  // returning to this tab) the cache is restored while appDirHandle is still live in
+  // the parent, which would otherwise clobber the master with stale data.
+  const loadedFromDir=useRef(false);
   const dirHandle=appDirHandle;
   const dirName=appDirHandle?.name;
 
@@ -1102,7 +1107,7 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
   // Save to localStorage (and master file if connected) whenever data changes
   useEffect(()=>{
     if(allTxs.length)saveTrendsLS(allTxs);
-    if(allTxs.length&&appDirHandle){writeMasterToDir(appDirHandle,allTxs).catch(()=>{});}
+    if(allTxs.length&&appDirHandle&&loadedFromDir.current){writeMasterToDir(appDirHandle,allTxs).catch(()=>{});}
   },[allTxs,appDirHandle]);
 
   const openFolder=useCallback(async()=>{
@@ -1117,7 +1122,8 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       const txKey=tx=>(tx.id||tx.date+tx.description+tx.amount);
       const master=await readMasterFromDir(dh);
       const{txs:csvTxs,names}=await readCsvsFromDir(dh);
-      const merged=dedup([...allTxs,...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
+      const merged=dedup([...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
+      loadedFromDir.current=true;
       setAllTxs(merged);
       setFiles(names);
       // Auto-save updated master back (without deleted transactions)
@@ -1140,7 +1146,8 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     const txKey=tx=>(tx.id||tx.date+tx.description+tx.amount);
     const master=await readMasterFromDir(appDirHandle);
     const{txs:csvTxs,names}=await readCsvsFromDir(appDirHandle);
-    const merged=dedup([...allTxs,...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
+    const merged=dedup([...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
+    loadedFromDir.current=true;
     setAllTxs(merged);
     setFiles(names);
     await writeMasterToDir(appDirHandle,merged);
