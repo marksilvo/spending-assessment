@@ -1224,12 +1224,16 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     )));
   },[subFilter,sub2Config,allTxs]);
 
-  // Reset date bounds when data first loads
+  // Keep the date range pinned to the data bounds unless the user has narrowed it.
+  // Only snapping on first load left "to" stuck at the old max after importing newer
+  // transactions, so the latest month silently dropped out of the view.
+  const prevBounds=useRef({min:"",max:""});
   useEffect(()=>{
-    if(allDates.min){
-      setDateFrom(prev=>prev||allDates.min);
-      setDateTo(prev=>prev||allDates.max);
-    }
+    if(!allDates.min)return;
+    const prev=prevBounds.current;
+    setDateFrom(cur=>(!cur||cur===prev.min)?allDates.min:cur);
+    setDateTo(cur=>(!cur||cur===prev.max)?allDates.max:cur);
+    prevBounds.current={min:allDates.min,max:allDates.max};
   },[allDates]);
 
   const toggleSub=useCallback((s)=>{
