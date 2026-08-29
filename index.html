@@ -853,18 +853,39 @@ function grpSub(txs){
 
 // ── Trends ──
 const ENRICH_FIELDS=["category","subcategory","subcategory2","recurring","recurringFrequency","recurringCustom","notes","priority"];
-function dedup(txs){
-  const seen=new Map();
-  for(const t of txs){
-    const key=`${t.date}|${t.description}|${t.amount}|${t.source}`;
-    if(!seen.has(key)){seen.set(key,{...t});}
-    else{
-      // Merge: fill in any enrichment fields the existing record is missing
-      const ex=seen.get(key);
-      ENRICH_FIELDS.forEach(f=>{if((ex[f]==null||ex[f]===false)&&t[f]!=null&&t[f]!==false)ex[f]=t[f];});
+// Transactions are matched by value, not identity: the same purchase arrives from
+// the master file and again from any exported CSV covering it, and those copies
+// carry different ids (CSV rows carry none at all). Collapsing every match to a
+// single record also erased genuine repeat purchases — two identical coffees on one
+// day became one — so matching is ordinal. Each input batch (the master, then each
+// CSV) is counted on its own and the highest count for a tuple wins, pairing the
+// nth occurrence in one batch with the nth in another. Counting across a merged
+// batch instead would inflate: two exports overlapping the same week would each
+// contribute a copy and read as a repeat purchase.
+function dedup(...batches){
+  const groups=new Map(); // tuple key -> one record per occurrence
+  for(const batch of batches){
+    const seenInBatch=new Map();
+    for(const t of batch){
+      const key=`${t.date}|${t.description}|${t.amount}|${t.source}`;
+      const n=seenInBatch.get(key)||0;
+      seenInBatch.set(key,n+1);
+      let slots=groups.get(key);
+      if(!slots){slots=[];groups.set(key,slots);}
+      if(n<slots.length){
+        // This occurrence was already seen in an earlier batch — fill in any
+        // enrichment fields that copy is missing.
+        const ex=slots[n];
+        ENRICH_FIELDS.forEach(f=>{if((ex[f]==null||ex[f]===false)&&t[f]!=null&&t[f]!==false)ex[f]=t[f];});
+      }else{
+        // Give CSV-sourced rows an id so every copy is individually addressable —
+        // the Trends list falls back to date+description+amount as a key, which
+        // duplicates share, so editing or deleting one would hit them all.
+        slots.push({...t,id:t.id||crypto.randomUUID()});
+      }
     }
   }
-  return [...seen.values()];
+  return [...groups.values()].flat();
 }
 
 function normaliseDate(d){
@@ -1012,6 +1033,13 @@ function loadHiddenSubs(){try{const s=localStorage.getItem(HIDDEN_SUBS_KEY);retu
 async function readDeletedFromDir(dirHandle){
   try{const fh=await dirHandle.getFileHandle(DELETED_FILE);const file=await fh.getFile();const text=await file.text();return new Set(JSON.parse(text));}catch{return new Set();}
 }
+// Deletions recorded before every transaction carried an id were keyed by value, so
+// both the id and the value key are checked. A legacy value key still removes every
+// copy of that tuple, which is what it meant when it was written.
+function isDeleted(tx,deletedKeys){
+  return deletedKeys.has(tx.id)||deletedKeys.has(tx.date+tx.description+tx.amount);
+}
+
 async function writeDeletedToDir(dirHandle,deletedKeys){
   try{const fh=await dirHandle.getFileHandle(DELETED_FILE,{create:true});const w=await fh.createWritable();await w.write(JSON.stringify([...deletedKeys]));await w.close();}catch{}
 }
@@ -1033,16 +1061,16 @@ async function readMasterFromDir(dirHandle){
 }
 
 async function readCsvsFromDir(dirHandle){
-  const txs=[];const names=[];
+  const batches=[];const names=[];
   for await(const entry of dirHandle.values()){
     if(entry.kind==="file"&&entry.name.endsWith(".csv")&&entry.name!==MASTER_FILE){
       const file=await entry.getFile();
       const text=await file.text();
       const{txs:parsed,hasCats}=parseTrendsCsv(text);
-      if(parsed.length){txs.push(...parsed);names.push({name:entry.name,count:parsed.length,hasCats});}
+      if(parsed.length){batches.push(parsed);names.push({name:entry.name,count:parsed.length,hasCats});}
     }
   }
-  return{txs,names};
+  return{batches,names};
 }
 
 function CategoryPriorities({subPriorityMap,onAssign,onAssign2}){
@@ -1119,10 +1147,9 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
       // Load deleted keys, master, and CSVs — filter deleted before merging
       const deleted=await readDeletedFromDir(dh);
       setDeletedKeys(deleted);
-      const txKey=tx=>(tx.id||tx.date+tx.description+tx.amount);
       const master=await readMasterFromDir(dh);
-      const{txs:csvTxs,names}=await readCsvsFromDir(dh);
-      const merged=dedup([...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
+      const{batches:csvBatches,names}=await readCsvsFromDir(dh);
+      const merged=dedup(master,...csvBatches).filter(tx=>!isDeleted(tx,deleted));
       loadedFromDir.current=true;
       setAllTxs(merged);
       setFiles(names);
@@ -1143,10 +1170,9 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
     setLoading(true);setStatus("Syncing...");
     const deleted=await readDeletedFromDir(appDirHandle);
     setDeletedKeys(deleted);
-    const txKey=tx=>(tx.id||tx.date+tx.description+tx.amount);
     const master=await readMasterFromDir(appDirHandle);
-    const{txs:csvTxs,names}=await readCsvsFromDir(appDirHandle);
-    const merged=dedup([...master,...csvTxs]).filter(tx=>!deleted.has(txKey(tx)));
+    const{batches:csvBatches,names}=await readCsvsFromDir(appDirHandle);
+    const merged=dedup(master,...csvBatches).filter(tx=>!isDeleted(tx,deleted));
     loadedFromDir.current=true;
     setAllTxs(merged);
     setFiles(names);
@@ -1159,15 +1185,15 @@ function Trends({onBack,appDirHandle,setAppDirHandle,onDirConnected,onSubPriorit
 
   // Fallback: manual file picker for browsers without directory API
   const handleFiles=useCallback(async(fileList)=>{
-    const newTxs=[...allTxs];const newFiles=[...files];
+    const newBatches=[];const newFiles=[...files];
     for(const f of fileList){
       if(!f.name.endsWith(".csv"))continue;
       const text=await f.text();
       const{txs:parsed,hasCats}=parseTrendsCsv(text);
-      newTxs.push(...parsed);
+      newBatches.push(parsed);
       newFiles.push({name:f.name,count:parsed.length,hasCats});
     }
-    const deduped=dedup(newTxs);
+    const deduped=dedup(allTxs,...newBatches);
     setAllTxs(deduped);
     setFiles(newFiles);
     const uncatFiles=newFiles.filter(n=>!n.hasCats).map(n=>n.name);
